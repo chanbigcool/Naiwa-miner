@@ -30,8 +30,18 @@ python3 -m http.server 8000
 
 ### 在线部署
 
-线上版本由 GitHub Pages 托管，全部资源使用相对路径，因此放在 `/<仓库名>/` 子路径下无需改动任何代码。
-仓库设置对应 `Settings → Pages → Source: Deploy from a branch → main → / (root)`。
+线上版本由 GitHub Pages 托管，发布分支为 `gh-pages`，站点根目录即仓库根目录。
+全部资源使用相对路径，因此放在 `/<仓库名>/` 子路径下无需改动任何代码。
+
+发布分支与开发分支分开，是为了免去在仓库设置页里手动指定发布源：
+向仓库推送一个 `gh-pages` 分支即会自动开通 Pages 站点。
+`.github/workflows/sync-pages.yml` 会在每次推送到 `main` 之后把 `main` 镜像到 `gh-pages`，
+两者不会漂移；若 Actions 不可用，手动同步等价于：
+
+```bash
+git push --force origin main:gh-pages
+```
+
 根目录的 `.nojekyll` 用于关闭 Jekyll 处理，避免以下划线开头的目录被忽略。
 
 ## 玩法
@@ -220,6 +230,7 @@ python3 -m http.server 8000
 ```
 index.html              合集入口页
 .nojekyll               GitHub Pages：关闭 Jekyll 处理
+.github/workflows/      sync-pages.yml：把 main 镜像到发布分支 gh-pages
 PLAN.md                 实施方案
 DIFFICULTY-PLAN.md      难度设计说明与实测数据
 SHOP-DYNAMITE-DESIGN.md 炸药与小卖部设计说明
