@@ -2,6 +2,7 @@
 # 跑 `node _qa/driver.mjs <url> <输出目录>` 会重新生成，约 17 MB，
 # 且每次跑内容都在变，进版本库只会淹没真正的改动。
 _qa/shots/
+_qa/shots-*/
 _qa/screens/
 _qa/screens-file/
 
