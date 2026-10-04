@@ -1,0 +1,17 @@
+# 统一按 LF 存储，避免 Windows / macOS / Linux 之间来回转换产生整文件 diff
+* text=auto eol=lf
+
+# 二进制文件别做行尾或文本合并处理
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.webp  binary
+*.ico   binary
+*.mp3   binary
+*.m4a   binary
+*.woff  binary
+*.woff2 binary
+
+# 让 GitHub 的语言统计认得出这是前端项目
+*.html linguist-documentation=false

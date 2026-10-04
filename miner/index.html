@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#fff9f1">
+<meta name="description" content="奶蛙矿工：国民小游戏「黄金矿工」的奶蛙版。甩钩抓宝，天使是炸弹别碰，大块头会挣脱。">
+<title>奶蛙矿工 · 奶蛙小游戏</title>
+<link rel="icon" type="image/webp" href="../assets/nai/nai01-blob.webp">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="page">
+  <main class="app">
+
+    <!-- ============ 舞台 ============ -->
+    <section class="stage-wrap" id="stageWrap">
+      <div class="stage" id="stage">
+        <canvas id="cv" role="img" aria-label="奶蛙矿工游戏舞台：奶蛙在洞口甩钩，抓取土层里的宝贝"></canvas>
+
+        <!-- 顶部 HUD（不吃点击） -->
+        <div class="hud" id="hud" aria-hidden="true">
+          <div class="hud-row">
+            <span class="stat"><b id="hudScore">0</b><small>分数</small></span>
+            <span class="stat"><b id="hudTarget">0</b><small>目标</small></span>
+            <span class="stat"><b id="hudLevel">1</b><small>关卡</small></span>
+            <span class="stat time"><b id="hudTime">60</b><small>秒</small></span>
+          </div>
+          <div class="bar"><i id="barFill"></i></div>
+        </div>
+
+        <!-- 连击牌 -->
+        <div class="combo-chip" id="comboChip" aria-hidden="true">
+          <b id="comboNum">0</b><span>连击</span><em id="comboMult">×1</em>
+        </div>
+
+        <!-- 达标 = 可以收工了。
+             这既是提示，也是按钮：达标之后玩家自己决定"现在过关"还是"再挖几钩攒小卖部的钱"。
+             （旧版达标后只能干等，是玩家反馈里最刺眼的一条。） -->
+        <button class="keep-hint" id="keepHint" type="button">
+          <span class="kh-tick" aria-hidden="true">✓</span>
+          <span class="kh-text">已达标 · 结余 <b id="keepNum">0</b></span>
+          <span class="kh-go" id="keepGo">收工过关</span>
+          <span class="kh-key" aria-hidden="true">Enter</span>
+        </button>
+
+        <!-- 静音开关 -->
+        <button class="mute" id="btnMute" type="button" aria-label="静音开关">
+          <svg viewBox="0 0 24 24" width="100%" height="100%" aria-hidden="true">
+            <path class="mk-body" d="M4 9.5h3.2L12 5.4v13.2L7.2 14.5H4z" />
+            <path class="mk-wave1" d="M15.2 9.2a4 4 0 0 1 0 5.6" fill="none" stroke-width="1.8" stroke-linecap="round" />
+            <path class="mk-wave2" d="M17.8 6.6a7.6 7.6 0 0 1 0 10.8" fill="none" stroke-width="1.8" stroke-linecap="round" />
+            <path class="mk-slash" d="M4.4 4.4l15.2 15.2" fill="none" stroke-width="2" stroke-linecap="round" />
+          </svg>
+        </button>
+
+        <!-- 炸药：手里拉着东西时按一下，当场炸掉、绳子立刻回来 -->
+        <button class="dyn" id="btnDyn" type="button" aria-label="引爆炸药">
+          <span class="dyn-body">
+            <svg viewBox="0 0 24 24" width="100%" height="100%" aria-hidden="true">
+              <path class="dy-bomb" d="M13.4 8.6a6.2 6.2 0 1 1-3.4-1.9" fill="none" stroke-width="2.4" stroke-linecap="round"/>
+              <circle class="dy-ball" cx="14.6" cy="15.4" r="6.2" />
+              <path class="dy-fuse" d="M10.1 7.4c.6-2 2.2-2.9 3.9-2.1" fill="none" stroke-width="1.8" stroke-linecap="round"/>
+              <circle class="dy-spark" cx="14.6" cy="4.6" r="1.5" />
+            </svg>
+          </span>
+          <b id="dynNum">0</b>
+          <span class="dyn-tip" id="dynTip">拉着东西时按这里（或 B 键）炸药</span>
+        </button>
+
+        <!-- ========== 开始 ========== -->
+        <div class="overlay show" id="ovStart">
+          <div class="ov-card">
+            <div class="ov-title">奶蛙矿工</div>
+            <p class="ov-sub">钩子来回摆，看准了松手。<br>把底下的宝贝叼上来，凑够门槛过关。</p>
+
+            <p class="legend-lead"><b>越大越值钱，也越重、拖回来越慢。</b>落得越深，好东西越大。</p>
+            <div class="legend" id="legend"></div>
+
+            <div class="preset" id="preset">
+              <span class="preset-label">手感</span>
+              <button type="button" data-preset="relaxed">轻松</button>
+              <button type="button" data-preset="standard" class="on">标准</button>
+              <button type="button" data-preset="hard">硬核</button>
+            </div>
+            <p class="swing-note" id="swingNote"></p>
+
+            <button class="btn primary big" id="btnStart" type="button">开始挖矿</button>
+            <p class="ov-hint">
+              <b>带红圈的炸弹别抓！</b>大块头保险箱会挣扎脱钩。<br>
+              点击屏幕 / 按空格 放钩 · 按 <b>B</b> 或点左边炸药按钮引爆 · 连击倍率最高 ×4。<br>
+              大块头拖得慢，但单位时间还是最划算 —— 沉住气先抢大的；嫌石头挡路就炸掉。<br>
+              <b>达标之后按 Enter 可以收工</b>提前过关 —— 也可以接着挖，多赚的分就是小卖部的钱。<br>
+              每关都会配发炸药，过关后可以去<b>小卖部</b>把赚到的分换成下一关的道具。
+            </p>
+            <p class="ov-best">最高 <b id="bestScore">0</b> 分 · 最远到第 <b id="bestLevel">1</b> 关</p>
+          </div>
+        </div>
+
+        <!-- ========== 暂停 ========== -->
+        <div class="overlay" id="ovPause">
+          <div class="ov-card">
+            <div class="ov-title">歇一会儿</div>
+            <p class="ov-sub">切走页面会自动暂停，回来接着挖。</p>
+            <button class="btn primary big" id="btnResume" type="button">继续</button>
+            <button class="btn ghost" id="btnQuit" type="button">重开一局</button>
+          </div>
+        </div>
+
+        <!-- ========== 过关 ========== -->
+        <div class="overlay" id="ovClear">
+          <div class="ov-card">
+            <div class="ov-title win" id="clearTitle">过关！</div>
+            <p class="ov-sub" id="clearSub"></p>
+            <div class="tally" id="clearTally"></div>
+            <button class="btn primary big" id="btnNext" type="button">下一关</button>
+          </div>
+        </div>
+
+        <!-- ========== 结束 ========== -->
+        <div class="overlay" id="ovOver">
+          <div class="ov-card">
+            <div class="ov-title lose">没达标</div>
+            <p class="ov-sub" id="overSub"></p>
+            <div class="tally" id="overTally"></div>
+            <p class="ov-best" id="overBest"></p>
+            <button class="btn primary big" id="btnAgain" type="button">再来一局</button>
+          </div>
+        </div>
+
+        <!-- ========== 小卖部 ========== -->
+        <div class="overlay" id="ovShop">
+          <div class="ov-card">
+            <div class="ov-title shop">小卖部</div>
+            <p class="ov-sub" id="shopSub"></p>
+
+            <div class="shop-wallet">
+              <span>手里 <b id="shopWallet">0</b></span>
+              <span>门槛 <b id="shopTarget">0</b></span>
+              <span class="hl">能动用 <b id="shopBudget">0</b></span>
+            </div>
+
+            <div class="shop-list" id="shopList"></div>
+
+            <p class="shop-note">
+              买的就是<b>手里的分</b>，而分就是门槛 —— 所以买得越多，达标越慢。
+              东西也<b>只顶下一关</b>，不是永久升级。<br>
+              一共花掉 <b id="shopSpent">0</b> 分 · 下一关会带 <b id="shopDyn">0</b> 发炸药。
+            </p>
+
+            <button class="btn primary big" id="btnShopGo" type="button">出发，进下一关</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <p class="foot">
+      奶蛙是网络梗 · 本项目仅供学习娱乐，不作商用 · 立绘取自
+      <a href="https://yhsome.github.io/BigNaiWa/" target="_blank" rel="noopener">《合成大奶娃》</a>
+    </p>
+  </main>
+</div>
+
+<script src="../common/sfx.js"></script>
+<script src="logic.js"></script>
+<script src="game.js"></script>
+</body>
+</html>
