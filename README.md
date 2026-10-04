@@ -2,14 +2,16 @@
 
 ## 在线试玩
 
-> **<https://cc5207597-hash.github.io/Naiwa-miner/miner/>**
+> **<https://naiwa-mini-games.app.workbuddy.host/miner/>**
 >
-> 手机与电脑均适配，点开即玩，无需安装。合集入口页：<https://cc5207597-hash.github.io/Naiwa-miner/>
+> 手机与电脑均适配，点开即玩，无需安装。合集入口页：<https://naiwa-mini-games.app.workbuddy.host/>
 
 用「奶蛙」形象重制的黄金矿工（Gold Miner）。原生 HTML / CSS / JavaScript 实现，
 无依赖、无构建步骤，`file://` 直接打开即可离线运行。
 
 仓库：<https://github.com/cc5207597-hash/Naiwa-miner>
+
+GitHub Pages 镜像（由 `gh-pages` 分支发布）：<https://cc5207597-hash.github.io/Naiwa-miner/miner/>
 
 > 本仓库当前只包含这一款游戏。根目录 `index.html` 为合集入口页，矿工本体位于 `miner/`。
 
@@ -30,7 +32,10 @@ python3 -m http.server 8000
 
 ### 在线部署
 
-线上版本由 GitHub Pages 托管，发布分支为 `gh-pages`，站点根目录即仓库根目录。
+线上版本托管在两条通道上：主链接是 `naiwa-mini-games.app.workbuddy.host`（由本仓库根目录整份发布，
+首页是合集入口页，游戏在 `/miner/`）；另一条是 GitHub Pages 镜像。
+
+GitHub Pages 的发布分支为 `gh-pages`，站点根目录即仓库根目录。
 全部资源使用相对路径，因此放在 `/<仓库名>/` 子路径下无需改动任何代码。
 
 发布分支与开发分支分开，是为了免去在仓库设置页里手动指定发布源：
