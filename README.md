@@ -9,16 +9,16 @@
 用「奶蛙」形象重制的黄金矿工（Gold Miner）。原生 HTML / CSS / JavaScript 实现，
 无依赖、无构建步骤，`file://` 直接打开即可离线运行。
 
-仓库：<https://github.com/cc5207597-hash/Naiwa-miner>
+仓库：<https://github.com/chanbigcool/Naiwa-miner>
 
-GitHub Pages 镜像（由 `gh-pages` 分支发布）：<https://cc5207597-hash.github.io/Naiwa-miner/miner/>
+GitHub Pages 镜像（由 `gh-pages` 分支发布）：<https://chanbigcool.github.io/Naiwa-miner/miner/>
 
 > 本仓库当前只包含这一款游戏。根目录 `index.html` 为合集入口页，矿工本体位于 `miner/`。
 
 ## 快速开始
 
 ```bash
-git clone git@github.com:cc5207597-hash/Naiwa-miner.git
+git clone git@github.com:chanbigcool/Naiwa-miner.git
 cd Naiwa-miner
 
 # 起本地服务（推荐，音效与图片不受 file:// 限制）

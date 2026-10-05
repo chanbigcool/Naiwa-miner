@@ -1,8 +1,9 @@
 # GitHub Pages 的发布分支是 gh-pages，而日常开发提交在 main。
 # 本工作流在每次推送 main 之后，把 main 整体镜像到 gh-pages，两者不会漂移。
 #
-# 之所以用「推 gh-pages 分支」而不是在设置页选 main 作为发布源：
-# 推送 gh-pages 会自动开启 Pages 站点，无需任何人工设置。
+# 分支同步与站点启用是两件事：这个工作流只保证 gh-pages 与 main 不漂移，
+# 它本身不会开启 Pages 站点。站点需在 Settings → Pages 选一次发布源
+# （Source: Deploy from a branch, 分支 gh-pages, 目录 / (root)），开完即长期有效。
 #
 # 若 Actions 不可用，手动同步等价于：
 #   git push --force origin main:gh-pages
