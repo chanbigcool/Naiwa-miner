@@ -119,8 +119,26 @@ async function clickSelector(sel) {
   return box;
 }
 
+/* 等待游戏真正就绪再操作。
+ * 死等固定毫秒在本地够用，但线上要下载十几张立绘，脚本可能抢在
+ * 事件绑定之前点击「开始挖矿」，于是整轮流程都在一个没启动的实例上空转
+ * （元素都在、点击也不报错，只是没人听）。这里改成轮询到就绪为止。 */
+async function waitReady(maxMs = 30000) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < maxMs) {
+    const ok = await evaluate(`(() => {
+      const g = window.__miner && window.__miner.game;
+      const b = document.getElementById("btnStart");
+      return !!(g && b && document.readyState === "complete");
+    })()`);
+    if (ok) { return Date.now() - t0; }
+    await sleep(200);
+  }
+  throw new Error('等待游戏就绪超时（' + maxMs + 'ms）');
+}
+
+const report = {};
 try {
-  const report = {};
 
   await send('Page.enable');
   await send('Runtime.enable');
@@ -129,7 +147,7 @@ try {
     { width: 420, height: 880, deviceScaleFactor: 2, mobile: true });
 
   const nav = await send('Page.navigate', { url: TARGET });
-  await sleep(2600);
+  report.loadMs = await waitReady(30000);
 
   report.title = await evaluate('document.title');
   report.legendItems = await evaluate('document.querySelectorAll("#legend li").length');
@@ -376,7 +394,7 @@ try {
   await send('Emulation.setDeviceMetricsOverride',
     { width: 1440, height: 820, deviceScaleFactor: 1, mobile: false });
   await send('Page.navigate', { url: TARGET });
-  await sleep(2200);
+  report.pcLoadMs = await waitReady(30000);
   report.pcLayout = await evaluate(`(() => {
     const r = document.getElementById("stage").getBoundingClientRect();
     const g = window.__miner.game;
@@ -402,9 +420,14 @@ try {
   await send('Emulation.setDeviceMetricsOverride',
     { width: 420, height: 880, deviceScaleFactor: 2, mobile: true });
   await send('Page.navigate', { url: TARGET });
-  await sleep(1600);
+  await waitReady(30000);
 
   // —— 暂停（模拟切标签页） ——
+  // 必须先真的开局：在起始页上切标签页本来就不该弹暂停浮层，
+  // 那样断言永远为真、等于没测。
+  await clickSelector('#btnStart');
+  await sleep(800);
+  report.pauseStarted = await evaluate('window.__miner.game.phase');
   await evaluate('Object.defineProperty(document,"hidden",{value:true,configurable:true}); document.dispatchEvent(new Event("visibilitychange"));');
   await sleep(400);
   report.pauseOverlay = await evaluate('document.getElementById("ovPause").classList.contains("show")');
@@ -413,6 +436,7 @@ try {
   await clickSelector('#btnResume');
   await sleep(400);
   report.resumed = await evaluate('!document.getElementById("ovPause").classList.contains("show")');
+  report.pauseVerified = report.pauseOverlay === true && report.resumed === true;
 
   // —— 首页 ——
   await send('Page.navigate', { url: TARGET.replace(/miner\/?$/, '') });
@@ -435,7 +459,10 @@ try {
 
   cleanup(problems.length ? 2 : 0);
 } catch (err) {
-  console.error('QA 中断:', err && err.message ? err.message : err);
+  report._中断 = err && err.message ? err.message : String(err);
+  try { fs.writeFileSync(path.join(OUTDIR, 'report.json'), JSON.stringify(report, null, 2)); } catch (e) { /* ignore */ }
+  console.error('QA 中断:', report._中断);
+  console.error('已到步骤的部分结果:\n' + JSON.stringify(report, null, 2));
   console.log('已采集到的问题:\n' + (problems.join('\n') || '无'));
   cleanup(3);
 }
