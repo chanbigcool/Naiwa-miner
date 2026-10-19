@@ -460,6 +460,23 @@ body {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
+/* ---------- 玩家头像 ----------
+   十张奶蛙立绘全是黄色系，靠圆底那层 tint 区分（tint 取自矿区里同一只蛙）；
+   立绘自带一点底部投影，稍微放大一点填满圆，不然四周留一圈空。 */
+.ava {
+  flex: 0 0 auto; position: relative;
+  width: 1.8em; height: 1.8em; display: block; overflow: hidden;
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 26%, #fff 0%, var(--ava-tint, #ffe6a8) 76%);
+  box-shadow: 0 0 0 1px rgba(126, 84, 44, .16) inset, 0 1px 3px rgba(126, 84, 44, .18);
+}
+.ava img {
+  position: absolute; left: 50%; top: 52%;
+  width: 124%; height: 124%;
+  transform: translate(-50%, -50%);
+  object-fit: contain; display: block;
+}
+
 /* 结算卡上的上榜区 */
 .lb-save {
   margin: 0 0 .8em; padding: .6em .65em;
@@ -472,6 +489,8 @@ body {
   box-shadow: 0 0 0 1px rgba(232, 163, 61, .45) inset, 0 6px 18px rgba(232, 163, 61, .18);
 }
 .lb-save-top { display: flex; align-items: center; gap: .45em; }
+/* 结算卡窄，头像比榜单行小一号，别把名次文案挤成两行 */
+.lb-ava { width: 1.5em; height: 1.5em; }
 .lb-badge {
   flex: 0 0 auto; min-width: 2.4em; padding: .12em .35em;
   border-radius: 99px; text-align: center;
@@ -529,6 +548,7 @@ body {
   border-radius: .6em; background: rgba(126, 84, 44, .07);
 }
 .board-name label { flex: 0 0 auto; font-size: .68em; font-weight: 700; color: var(--ink-soft); }
+.board-ava { width: 1.65em; height: 1.65em; }
 .board-name-input { font-size: .74em; padding: .35em .55em; }
 .board-name-note { flex: 0 0 auto; font-size: .6em; color: var(--ink-soft); }
 
@@ -546,8 +566,8 @@ body {
 
 .board-list { list-style: none; margin: 0 0 .7em; padding: 0; display: grid; gap: .28em; text-align: left; }
 .bl-row {
-  display: flex; align-items: center; gap: .5em;
-  padding: .36em .55em; border-radius: .55em;
+  display: flex; align-items: center; gap: .42em;
+  padding: .34em .5em; border-radius: .55em;
   background: rgba(126, 84, 44, .055);
 }
 .bl-row.me { background: linear-gradient(90deg, rgba(255, 196, 107, .3), rgba(255, 246, 226, .55)); box-shadow: 0 0 0 1px rgba(232, 163, 61, .4) inset; }
@@ -560,6 +580,7 @@ body {
 .bl-row.p1 .bl-rank { color: #7a4a06; background: linear-gradient(135deg, #ffd76b, #e8a33d); }
 .bl-row.p2 .bl-rank { color: #48525c; background: linear-gradient(135deg, #e6eaef, #b9c2ca); }
 .bl-row.p3 .bl-rank { color: #6b3d18; background: linear-gradient(135deg, #f2d0a9, #c98d5a); }
+.bl-ava { width: 1.65em; height: 1.65em; }
 .bl-who { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
 .bl-who b { font-size: .76em; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bl-who small { font-size: .62em; color: var(--ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

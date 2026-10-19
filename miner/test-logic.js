@@ -1751,6 +1751,110 @@ test('排行榜 · 存档读回要做体检：垃圾、重复 id、空记录都�
   eq(L.normalizeBoard([]).length, 0);
 });
 
+/* ---------------- 头像 ---------------- */
+test('排行榜 · 头像池只用有立绘的奶蛙：石头和炸弹不进池', function () {
+  eq(L.AVATARS.length, 10, '十只可以当头像的奶蛙');
+  assert(L.AVATARS.indexOf('stone') < 0, '灰石堆没有立绘');
+  assert(L.AVATARS.indexOf('angel') < 0,
+    '天使在游戏里是炸弹，顶着它上榜容易被读成"被扣了 150 分"');
+  var seen = {};
+  for (var i = 0; i < L.AVATARS.length; i++) {
+    var k = L.AVATARS[i];
+    eq(seen[k], undefined, k + ' 在池里重复了');
+    seen[k] = 1;
+    assert(!!(L.ITEMS[k] && L.ITEMS[k].img), k + ' 必须有对应立绘，否则榜上是个空圆');
+  }
+});
+
+test('排行榜 · 头像按名字哈希回填：同名同脸，前后空格也不换脸', function () {
+  var a = L.avatarForName('奶蛙王');
+  eq(L.isAvatar(a), true, '回填结果必须落在池内');
+  eq(L.avatarForName('奶蛙王'), a, '同一个名字永远是同一张脸');
+  eq(L.avatarForName(' 奶蛙王 '), a, '清洗之后再算哈希，别让空格换脸');
+  var keys = {};
+  ['甲方', '乙方', '丙方', '丁方'].forEach(function (n) { keys[L.avatarForName(n)] = 1; });
+  assert(Object.keys(keys).length >= 2, '四个不同名字不该全撞成一张');
+});
+
+test('排行榜 · 随机分配：先避开榜上出现最多的那几只', function () {
+  var none = L.pickAvatar([], function () { return 0.999; });
+  eq(L.isAvatar(none), true, '空榜时池里随便挑，但必须是池内的');
+  var out = L.pickAvatar(['blob', 'blob', 'stand'], function () { return 0; });
+  assert(out !== 'blob' && out !== 'stand',
+    'blob 已被用两次、stand 一次，应该从没人用过的里挑');
+  eq(L.pickAvatar(['blob', 'blob'], function () { return 0; }), 'stand',
+    '只剩 stand 一次没用过');
+  var all = L.AVATARS.slice();
+  eq(L.isAvatar(L.pickAvatar(all, function () { return 0.5; })), true,
+    '池子全被占用时照样得给出一张，不能返回 undefined');
+});
+
+test('排行榜 · 记录存头像：合法值照用，脏值一律清空等全局分配', function () {
+  eq(L.makeRecord({ id: 'x', name: '甲', avatar: 'laugh' }).avatar, 'laugh',
+    '分配过的脸要跟着记录走');
+  eq(L.makeRecord({ id: 'y', name: '甲', avatar: 'stone' }).avatar, '',
+    '没有立绘的 key 不能进存档');
+  eq(L.makeRecord({ id: 'z', name: '甲', avatar: '../../etc/passwd' }).avatar, '',
+    '头像要拼进 img 的 src，路径字符一律不许通过');
+
+  var board = L.insertRecord([], L.makeRecord({ id: 'w', name: '甲', score: 300, level: 2, ts: 5 }), 40);
+  eq(L.isAvatar(board[0].avatar), true, '插进榜之后由整榜分配补上一张脸');
+  eq(board[0].avatar, L.avatarForName('甲'), '空榜时第一张脸就是这个名字的起点');
+
+  var first = L.makeRecord({ id: 'p1', name: '乙', score: 900, level: 3, ts: 10, avatar: 'god' });
+  var two = L.insertRecord([first], L.makeRecord({ id: 'p2', name: '乙', score: 500, level: 2, ts: 11 }), 40);
+  eq(two.filter(function (r) { return r.id === 'p2'; })[0].avatar, 'god',
+    '同一个人新一局没带 avatar，也该自动顶同一张脸');
+});
+
+test('排行榜 · 老存档没有头像字段：读回来补上，同名同脸、两次一样', function () {
+  var raw = [
+    { id: 'o1', name: '老王', score: 900, level: 4, ts: 20 },
+    { id: 'o2', name: '老王', score: 500, level: 2, ts: 21 },
+    { id: 'o3', name: '小张', score: 700, level: 3, ts: 22 },
+  ];
+  var a = L.normalizeBoard(raw, 40);
+  var b = L.normalizeBoard(raw, 40);
+  var by = {};
+  a.forEach(function (r) { by[r.id] = r; });
+  eq(a.length, 3);
+  eq(L.isAvatar(by.o1.avatar), true, '补出来的脸必须在池内');
+  eq(by.o2.avatar, by.o1.avatar, '同一个人两条记录必须是同一张脸');
+  eq(by.o1.avatar, b.filter(function (r) { return r.id === 'o1'; })[0].avatar,
+    '每读一次就换脸的话，玩家会以为榜被人顶了');
+  assert(by.o1.avatar !== by.o3.avatar, '两个人不该在同一张脸上');
+});
+
+test('排行榜 · 榜上每个名字尽量分到不同的脸', function () {
+  var names = ['甲', '乙', '丙', '丁', '戊', '己', '庚', '辛'];
+  var raw = names.map(function (n, i) {
+    return { id: 'p' + i, name: n, score: 100 + i, level: 2, ts: 1000 + i };
+  });
+  var out = L.normalizeBoard(raw, 40);
+  var faces = out.map(function (r) { return r.avatar; });
+  eq(faces.length, 8);
+  eq(faces.filter(function (k, i) { return faces.indexOf(k) === i; }).length, 8,
+    '八个人八张不同的脸 —— 纯按名字哈希做不到，十张池子里必然撞');
+
+  var pinned = L.normalizeBoard([
+    { id: 'a', name: '甲', score: 500, level: 2, ts: 1, avatar: 'god' },
+    { id: 'b', name: '乙', score: 400, level: 2, ts: 2 },
+  ], 40);
+  eq(pinned.filter(function (r) { return r.name === '甲'; })[0].avatar, 'god',
+    '显式指定的脸不能被重排掉');
+  assert(pinned.filter(function (r) { return r.name === '乙'; })[0].avatar !== 'god',
+    '后来的人不能抢已经被占用的脸');
+});
+
+test('排行榜 · 改名覆盖同一条记录时，脸跟着一起过去', function () {
+  var old = L.makeRecord({ id: 'same', name: '旧名', score: 900, level: 4, avatar: 'god', ts: 10 });
+  var renamed = L.makeRecord({ id: 'same', name: '新名', score: 900, level: 4, avatar: 'god', ts: 10 });
+  var out = L.insertRecord([old], renamed, 40);
+  eq(out.length, 1, '同 id 覆盖，不该多出第二条');
+  eq(out[0].name, '新名');
+  eq(out[0].avatar, 'god', '改名不等于换人，脸得留着');
+});
+
 /* ==================================================================================
  * 汇总
  * ================================================================================== */

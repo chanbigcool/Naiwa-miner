@@ -1406,6 +1406,54 @@
   var NAME_MAX = 8;                        // 名字最长几个字
   var DEFAULT_NAME = '奶蛙矿工';
 
+  /* 头像池：直接用矿区里那些立绘（key 与 ITEMS 同名，渲染层据此拼文件名）。
+   * 去掉 stone（没有立绘）和 angel（游戏里它是"炸弹，别碰"）——
+   * 顶着炸弹头像上榜，玩家第一眼会读成"这人被扣了 150 分"。 */
+  var AVATARS = ['blob', 'stand', 'mouse', 'rooster', 'dog',
+                 'horse', 'rabbit', 'sumo', 'laugh', 'god'];
+
+  function isAvatar(key) {
+    return AVATARS.indexOf(String(key)) >= 0;
+  }
+
+  /* 稳定哈希（FNV-1a）。头像必须由**记录自身**决定：
+   * 用 Math.random 的话，同一份存档每次刷新会换个脸，看着像榜在被人顶替。 */
+  function avatarHash(str) {
+    var s = String(str == null ? '' : str);
+    var h = 2166136261;
+    for (var i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
+  }
+
+  /* 没有显式分配过头像的记录（老存档、别人留下的数据）按名字回填：
+   * 同名必同脸，且永远不变。 */
+  function avatarForName(name) {
+    return AVATARS[avatarHash(sanitizeName(name)) % AVATARS.length];
+  }
+
+  /* 随机分配：优先挑榜上出现次数最少的，次数相同才随机。
+   * 纯粹随机的话，十个人里撞脸两三次很常见，榜看起来像复制粘贴。 */
+  function pickAvatar(usedKeys, rng) {
+    var rand = typeof rng === 'function' ? rng : Math.random;
+    var count = {}, i;
+    for (i = 0; i < AVATARS.length; i++) { count[AVATARS[i]] = 0; }
+    var used = usedKeys || [];
+    for (i = 0; i < used.length; i++) {
+      if (count[used[i]] !== undefined) { count[used[i]] += 1; }
+    }
+    var best = Infinity, pool = [];
+    for (i = 0; i < AVATARS.length; i++) {
+      var n = count[AVATARS[i]];
+      if (n < best) { best = n; pool = [AVATARS[i]]; }
+      else if (n === best) { pool.push(AVATARS[i]); }
+    }
+    var pick = Math.floor(rand() * pool.length);
+    return pool[clamp(pick, 0, pool.length - 1)] || AVATARS[0];
+  }
+
   var BOARD_KEYS = ['score', 'level', 'combo'];
   var BOARD_META = {
     score: { label: '总分', unit: '分' },
@@ -1463,6 +1511,11 @@
       outcome: input.outcome === 'quit' ? 'quit' : 'fail',
     };
     if (!rec.id) { rec.id = 'r' + rec.ts.toString(36); }
+    /* 头像：只认白名单里的 key，别的一律清空。
+     * 空 = "还没分过脸"，由 assignAvatars 在整份榜单上统一分配 ——
+     * 单条按名字兜底看着省事，但会让"显式指定"和"临时兜底"在数据里长得一样，
+     * 全局避让就失效了（踩过：八个人只分到七张脸）。 */
+    rec.avatar = isAvatar(input.avatar) ? String(input.avatar) : '';
     return rec;
   }
 
@@ -1529,7 +1582,53 @@
       out.push(src[i]);
     }
     out.push(r);
-    return pruneRecords(out, limit);
+    return assignAvatars(pruneRecords(out, limit));
+  }
+
+  /* 全榜统一分脸：只在记录**没有显式头像**时介入（老存档、别人留下的数据）。
+   *
+   * 单条按名字哈希看着很干净，但在十来人的榜上会撞脸 —— 十张池子装八个人，
+   * 纯哈希几乎必然重复，榜上会出现两张一模一样的脸配两个不同的名字。
+   * 所以按名字顺序做一次线性探测：先到者先得，尽量一人一张。
+   *
+   * 确定性：名字先排序再分配，结果只取决于"榜上有哪些名字"，
+   * 跟记录顺序无关。同一份存档读一百次都是同一组脸。 */
+  function assignAvatars(list) {
+    var arr = (list || []).slice();
+    var taken = {}, faceOf = {}, names = [], seen = {}, i, k, nm;
+
+    for (i = 0; i < arr.length; i++) {
+      nm = arr[i].name || '';
+      if (!seen[nm]) { seen[nm] = 1; names.push(nm); }
+      /* 显式指定的脸优先占位，而且**不参与重排**：
+       * 那是玩家自己那一枚（也可能是同机另一人），宁可重复也不抢走。 */
+      if (isAvatar(arr[i].avatar) && !faceOf[nm]) {
+        faceOf[nm] = arr[i].avatar;
+        taken[arr[i].avatar] = 1;
+      }
+    }
+
+    names.sort();
+    for (i = 0; i < names.length; i++) {
+      nm = names[i];
+      if (faceOf[nm]) { continue; }
+      var start = avatarHash(nm) % AVATARS.length;
+      var pick = '';
+      for (k = 0; k < AVATARS.length; k++) {
+        var cand = AVATARS[(start + k) % AVATARS.length];
+        if (!taken[cand]) { pick = cand; break; }
+      }
+      if (!pick) { pick = AVATARS[start]; }        // 池子全满，只能撞
+      taken[pick] = 1;
+      faceOf[nm] = pick;
+    }
+
+    for (i = 0; i < arr.length; i++) {
+      var rec = makeRecord(arr[i]);
+      rec.avatar = faceOf[rec.name || ''] || avatarForName(rec.name);
+      arr[i] = rec;
+    }
+    return arr;
   }
 
   /* 存档读回来的东西一律过这里：挡掉 null / 字符串 / 字段乱填 / 重复 id。 */
@@ -1546,7 +1645,7 @@
       seen[rec.id] = 1;
       arr.push(rec);
     }
-    return pruneRecords(arr, limit);
+    return assignAvatars(pruneRecords(arr, limit));
   }
 
   /* 渲染层要的那几行 */
@@ -1619,6 +1718,12 @@
     BOARD_META: BOARD_META,
     NAME_MAX: NAME_MAX,
     DEFAULT_NAME: DEFAULT_NAME,
+    AVATARS: AVATARS,
+    isAvatar: isAvatar,
+    avatarHash: avatarHash,
+    avatarForName: avatarForName,
+    pickAvatar: pickAvatar,
+    assignAvatars: assignAvatars,
     boardMetric: boardMetric,
     sanitizeName: sanitizeName,
     displayName: displayName,

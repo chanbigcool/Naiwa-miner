@@ -139,6 +139,7 @@
             <div class="lb-save" id="overLb">
               <div class="lb-save-top">
                 <span class="lb-badge" id="overRankBadge">#1</span>
+                <span class="ava lb-ava" id="overAva" aria-hidden="true"></span>
                 <span class="lb-save-txt" id="overRankTxt"></span>
                 <button class="lb-link" id="btnOverBoard" type="button">看榜</button>
               </div>
@@ -159,14 +160,16 @@
 
         <!-- ========== 排行榜 ==========
              三个榜看同一份记录，只是排序键不同（总分 / 关卡 / 连击）。
-             名字是全机共用的一枚，改名会连带把"最近这一局"那条一起改 ——
-             否则改完名旧成绩还挂在旧名下，像两个人。 -->
+             名字是全机共用的一枚，改名会连带把"我的"记录一起改 ——
+             否则改完名旧成绩还挂在旧名下，像两个人。
+             头像同理但更硬：只在本机分配一次，跟着名字走、不随改名换脸。 -->
         <div class="overlay" id="ovBoard">
           <div class="ov-card">
             <div class="ov-title board">排行榜</div>
-            <p class="ov-sub">这台设备上的成绩 · 一局记一条</p>
+            <p class="ov-sub">这台设备上的成绩 · 一局记一条 · 头像随机分配</p>
 
             <div class="board-name">
+              <span class="ava board-ava" id="boardAva" aria-hidden="true"></span>
               <label for="boardNameInput">我的名字</label>
               <input class="board-name-input" id="boardNameInput" type="text" maxlength="8"
                      placeholder="还没起名" autocomplete="off" spellcheck="false"

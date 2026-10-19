@@ -83,6 +83,7 @@
     lbMeta: document.getElementById('lbMeta'),
     boardNameInput: document.getElementById('boardNameInput'),
     boardNameNote: document.getElementById('boardNameNote'),
+    boardAva: document.getElementById('boardAva'),
     boardTabs: document.getElementById('boardTabs'),
     boardList: document.getElementById('boardList'),
     boardEmpty: document.getElementById('boardEmpty'),
@@ -91,6 +92,7 @@
     /* 结算卡上的上榜区 */
     overLb: document.getElementById('overLb'),
     overRankBadge: document.getElementById('overRankBadge'),
+    overAva: document.getElementById('overAva'),
     overRankTxt: document.getElementById('overRankTxt'),
     btnOverBoard: document.getElementById('btnOverBoard'),
     overNameRow: document.getElementById('overNameRow'),
@@ -141,6 +143,7 @@
    * ================================================================== */
   var BOARD_KEY = 'naiwa_miner_board_v1';
   var NAME_KEY = 'naiwa_miner_name';
+  var AVATAR_KEY = 'naiwa_miner_avatar';
 
   function loadBoard() {
     try {
@@ -159,9 +162,66 @@
       else { localStorage.removeItem(NAME_KEY); }
     } catch (e) { /* 忽略 */ }
   }
+  function loadAvatar() {
+    try {
+      var k = localStorage.getItem(AVATAR_KEY) || '';
+      return L.isAvatar(k) ? k : '';
+    } catch (e) { return ''; }
+  }
+  function saveAvatar() {
+    try {
+      if (myAvatar) { localStorage.setItem(AVATAR_KEY, myAvatar); }
+    } catch (e) { /* 忽略 */ }
+  }
+
+  /* 这条算不算"我"的：没署名的（本机留下的空名记录）算，
+   * 署了当前这枚名字的也算。别人的名字绝对不动。 */
+  function isMyRecord(r) {
+    return !r.named || (!!myName && r.name === myName);
+  }
+
+  /* 玩家那一枚头像：**只在这台设备上分配一次**，之后每局、每次刷新都用它。
+   *
+   * 为什么不按名字算哈希：名字能改。改名就换脸的话，玩家会以为榜上换了个人，
+   * 而这恰恰是"一个名字对应一个人"最该避免的错觉。
+   * 分配时避开榜上已经出现最多的那几只（见 L.pickAvatar），十个人撞脸也不稀奇。 */
+  function ensureAvatar() {
+    if (myAvatar) { return myAvatar; }
+    var used = [];
+    for (var i = 0; i < board.length; i++) {
+      /* 自己的旧记录不参与"已占用"统计：否则首次留名时会被自己那张临时脸挤开 */
+      if (!isMyRecord(board[i])) { used.push(board[i].avatar); }
+    }
+    myAvatar = L.pickAvatar(used);
+    saveAvatar();
+    return myAvatar;
+  }
+
+  /* 头像的 HTML。底色用这只蛙在矿区里的 tint —
+   * 十张立绘全是黄色系，光看脸分不出谁是谁，圆底才是最快的人脸识别。 */
+  function avatarParts(key) {
+    var k = L.isAvatar(key) ? key : L.AVATARS[0];
+    var def = L.ITEMS[k] || {};
+    return { tint: def.tint || '#ffe6a8', img: def.img || 'nai02-stand' };
+  }
+  function avatarHTML(key, extraCls) {
+    var a = avatarParts(key);
+    return '<span class="ava ' + (extraCls || '') + '" style="--ava-tint:' + a.tint + '">' +
+      '<img src="../assets/nai/' + a.img + '.webp" alt="" draggable="false" loading="lazy">' +
+      '</span>';
+  }
+  /* 页面上已经存在的头像槽（结算卡、名字行）只换 img，不重建外层，
+   * 免得每次重绘都把圆底的过渡动画重放一遍。 */
+  function fillAva(slot, key) {
+    if (!slot) { return; }
+    var a = avatarParts(key);
+    slot.style.setProperty('--ava-tint', a.tint);
+    slot.innerHTML = '<img src="../assets/nai/' + a.img + '.webp" alt="" draggable="false">';
+  }
 
   var board = loadBoard();
   var myName = loadName();
+  var myAvatar = loadAvatar();
   var recordSeq = 0;
   var lastRecordId = '';        // 最近一局那条（榜上找不到就是没挤进去）
   var lastRunBest = false;      // 这一局是不是刷新了最高分
@@ -211,6 +271,7 @@
       preset: preset,
       ts: now,
       named: !!myName,
+      avatar: ensureAvatar(),
       outcome: outcome,
     });
     board = L.insertRecord(board, rec, L.BOARD_LIMIT);
@@ -231,6 +292,8 @@
     var n = L.sanitizeName(raw);
     if (!n) { return false; }
     var old = myName;
+    /* 先把脸定下来：用旧名算"我"的范围，否则刚改的新名会把旧记录甩出去 */
+    var face = ensureAvatar();
     myName = n;
     saveName();
 
@@ -239,9 +302,13 @@
       var r = board[i];
       var mine = !r.named || (old && r.name === old);
       if (!mine) { continue; }
-      if (r.name === n && r.named) { continue; }
+      /* 名字没变、脸也对得上，就不要再写一遍 */
+      if (r.name === n && r.named && r.avatar === face) { continue; }
       var c = copyRec(r);
       c.name = n; c.named = true;
+      /* 留名 = 认领：之前按"奶蛙矿工"哈希回填的临时脸，统一换成你的那一枚。
+       * 否则同一个人会以两三张不同的脸上榜，看着像好几号人。 */
+      c.avatar = face;
       patched.push(c);
     }
     for (var j = 0; j < patched.length; j++) {
@@ -942,6 +1009,7 @@
         (r.outcome === 'quit' ? ' · 中途退出' : '') + ' · ' + dateLabel(r.ts);
       html += '<li class="' + cls + '">' +
         '<span class="bl-rank">' + (i + 1) + '</span>' +
+        avatarHTML(r.avatar, 'bl-ava') +
         '<span class="bl-who"><b>' + esc(r.name || L.DEFAULT_NAME) + '</b>' +
           '<small>' + esc(sub) + '</small></span>' +
         '<span class="bl-val">' + fmt(L.boardMetric(r, boardKey)) +
@@ -961,6 +1029,9 @@
     if (!el.overLb) { return; }
     var rec = currentRecord();
     var rank = rec ? L.rankOf(board, rec.id, 'score') : 0;
+    /* 这一局的脸跟着记录走；没记录（没挤进榜）也把"你的脸"亮出来，
+     * 让玩家知道下次上榜顶的是哪一张。 */
+    fillAva(el.overAva, rec && rec.avatar ? rec.avatar : ensureAvatar());
 
     el.overLb.classList.toggle('podium', rank === 1);
     el.overRankBadge.className = 'lb-badge' +
@@ -993,6 +1064,7 @@
     boardKey = 'score';                 // 每次打开都回到总分榜
     el.boardNameInput.value = myName || '';
     el.boardNameNote.textContent = myName ? '改完自动保存' : '起个名，下次自动用';
+    fillAva(el.boardAva, ensureAvatar());
     renderBoard();
     show(el.ovBoard);
   }
@@ -1459,6 +1531,7 @@
     get layout() { return game ? game.cfg.LAYOUT : null; },
     get board() { return board; },
     get name() { return myName; },
+    get avatar() { return myAvatar; },
     start: start,
     fit: fit,
   };  // 方便调试

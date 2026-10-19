@@ -164,9 +164,9 @@ try {
   /* ---------- 2. 有历史：三个榜 + 名字归属 ---------- */
   const now = Date.now();
   const seed = [
-    { id: 'a', name: '奶蛙', score: 5200, level: 4, comboBest: 6, ts: now - 500000, preset: 'standard', named: true },
-    { id: 'b', name: '老王', score: 9100, level: 6, comboBest: 9, ts: now - 400000, preset: 'standard', named: true },
-    { id: 'c', name: '小美', score: 7400, level: 9, comboBest: 5, ts: now - 300000, preset: 'hard', named: true },
+    { id: 'a', name: '奶蛙', score: 5200, level: 4, comboBest: 6, ts: now - 500000, preset: 'standard', named: true, avatar: 'dog' },
+    { id: 'b', name: '老王', score: 9100, level: 6, comboBest: 9, ts: now - 400000, preset: 'standard', named: true, avatar: 'god' },
+    { id: 'c', name: '小美', score: 7400, level: 9, comboBest: 5, ts: now - 300000, preset: 'hard', named: true, avatar: 'laugh' },
     { id: 'd', name: '奶蛙矿工', score: 2600, level: 2, comboBest: 14, ts: now - 200000, preset: 'standard', named: false },
     { id: 'e', name: '奶蛙矿工', score: 1500, level: 3, comboBest: 3, ts: now - 100000, preset: 'relaxed', named: false },
     { id: 'f', name: '奶蛙矿工', score: 880, level: 1, comboBest: 2, ts: now - 50000, preset: 'standard', named: false },
@@ -191,6 +191,30 @@ try {
   need(report.scoreTop.name === '老王' && report.scoreTop.val.indexOf('9,100') === 0, '总分榜第一不对');
   await shot('02-board-score.png');
 
+  /* 头像：每行一张、真的加载出来、同名同脸 */
+  report.avatars = await evaluate(`(() => {
+    return [...document.querySelectorAll('#boardList .bl-row')].map(r => {
+      const ava = r.querySelector('.bl-ava');
+      const img = ava && ava.querySelector('img');
+      return {
+        name: r.querySelector('.bl-who b').textContent,
+        has: !!img,
+        loaded: !!(img && img.naturalWidth > 0),
+        src: img ? img.getAttribute('src') : '',
+        tint: ava ? getComputedStyle(ava).getPropertyValue('--ava-tint').trim() : '',
+      };
+    });
+  })()`);
+  need(report.avatars.length === 6, '六条记录都要有头像行');
+  need(report.avatars.every((a) => a.has && a.loaded), '每行头像都得真的加载出来');
+  need(report.avatars.every((a) => /^\.\.\/assets\/nai\/nai\d\d-[a-z]+\.webp$/.test(a.src)),
+    '头像路径不对：' + JSON.stringify(report.avatars.map((a) => a.src)));
+  need(report.avatars.every((a) => /^#/.test(a.tint)), '圆底 tint 丢了：' + JSON.stringify(report.avatars.map((a) => a.tint)));
+  const miners = report.avatars.filter((a) => a.name === '奶蛙矿工');
+  need(miners.length === 3 && miners.every((a) => a.src === miners[0].src), '同名必须同一张脸');
+  const topAva = report.avatars.filter((a) => a.name === '老王')[0];
+  need(topAva.src.indexOf('nai11-god') >= 0, '老王的头像应该照存档里的 god，实际 ' + topAva.src);
+
   report.levelTop = await firstBy('level');
   need(report.levelTop.name === '小美' && report.levelTop.val.indexOf('9') === 0, '关卡榜第一不对');
   await shot('03-board-level.png');
@@ -212,6 +236,31 @@ try {
   need(report.afterName.name === '奶蛙王', '名字没落盘');
   need(report.afterName.mine === 3, '未署名的三条应该被认领，实际 ' + report.afterName.mine);
   need(report.afterName.others === 3, '别人的名字不该被改掉');
+
+  /* 留名 = 认领，也是"把脸定下来"的时刻 */
+  report.nameAvatar = await evaluate(`(() => {
+    const raw = JSON.parse(localStorage.getItem('naiwa_miner_board_v1'));
+    const mine = raw.filter(r => r.name === '奶蛙王');
+    const otherUsed = ['dog', 'god', 'laugh'];
+    return {
+      stored: localStorage.getItem('naiwa_miner_avatar'),
+      mine: mine.map(r => r.avatar),
+      otherUsed,
+      live: window.__miner.avatar,
+      onStartLine: (() => {
+        const img = document.querySelector('#boardAva img');
+        return img ? img.getAttribute('src') : '';
+      })(),
+    };
+  })()`);
+  need(!!report.nameAvatar.stored, '头像应该落盘到 localStorage');
+  need(report.nameAvatar.live === report.nameAvatar.stored, '内存里的那一枚应该就是落盘的那一枚');
+  need(report.nameAvatar.mine.every((k) => k === report.nameAvatar.stored),
+    '认领之后同一人只能有一张脸：' + JSON.stringify(report.nameAvatar.mine));
+  need(report.nameAvatar.otherUsed.indexOf(report.nameAvatar.stored) < 0,
+    '随机分配应该避开榜上已经被别人用掉的脸，实际分到 ' + report.nameAvatar.stored);
+  need(report.nameAvatar.onStartLine.indexOf('-' + report.nameAvatar.stored + '.webp') > 0,
+    '名字行左边的头像跟实际分配不一致：' + report.nameAvatar.onStartLine);
   await shot('04-board-named.png');
 
   // 空名字要被挡住
@@ -291,6 +340,21 @@ try {
   }))()`);
   need(!report.newPlayer.nameRowHidden, '新玩家应该在结算卡上看到起名框');
   need(report.newPlayer.badge === '#1', '榜首应该是新玩家');
+
+  report.newPlayerAva = await evaluate(`(() => {
+    const img = document.querySelector('#overAva img');
+    const slot = document.getElementById('overAva');
+    return {
+      src: img ? img.getAttribute('src') : '',
+      loaded: !!(img && img.naturalWidth > 0),
+      w: slot ? Math.round(slot.getBoundingClientRect().width) : 0,
+      stored: localStorage.getItem('naiwa_miner_avatar'),
+    };
+  })()`);
+  need(report.newPlayerAva.loaded, '结算卡上的头像没加载出来');
+  need(report.newPlayerAva.w > 12, '结算卡头像被压没了，实际宽 ' + report.newPlayerAva.w + 'px');
+  need(report.newPlayerAva.src.indexOf('-' + report.newPlayerAva.stored + '.webp') > 0,
+    '结算卡上的脸和本机分配的不一致：' + report.newPlayerAva.src);
   await shot('07-over-newcomer.png');
 
   await click('#overNameInput');
@@ -328,6 +392,14 @@ try {
     return { name: r.querySelector('.bl-who b').textContent, val: r.querySelector('.bl-val').textContent };
   })()`);
   need(report.persistedRow.name === '小王' && report.persistedRow.val.indexOf('3,000') === 0, '刷新后榜单内容不对');
+
+  /* 刷新一次就换脸的话，玩家会以为榜被别人顶了 */
+  report.avaAfterReload = await evaluate(`(() => {
+    const img = document.querySelector('#boardList .bl-ava img');
+    return { src: img ? img.getAttribute('src') : '', stored: localStorage.getItem('naiwa_miner_avatar') };
+  })()`);
+  need(report.avaAfterReload.src.indexOf('-' + report.avaAfterReload.stored + '.webp') > 0,
+    '刷新之后头像换了：' + JSON.stringify(report.avaAfterReload));
   await shot('09-board-persisted.png');
 
   // 改名要连带改掉"自己的"记录
@@ -338,9 +410,11 @@ try {
   await sleep(350);
   report.rename = await evaluate(`(() => {
     const raw = JSON.parse(localStorage.getItem('naiwa_miner_board_v1'));
-    return { stored: localStorage.getItem('naiwa_miner_name'), rec: raw[0].name };
+    return { stored: localStorage.getItem('naiwa_miner_name'), rec: raw[0].name,
+             ava: raw[0].avatar, avaStored: localStorage.getItem('naiwa_miner_avatar') };
   })()`);
   need(report.rename.stored === '大王' && report.rename.rec === '大王', '改名后历史记录应该跟着改');
+  need(report.rename.ava === report.rename.avaStored, '改名不该换脸');
   await shot('10-board-renamed.png');
 
   /* ---------- 6. 中途退出也要留档 ---------- */
