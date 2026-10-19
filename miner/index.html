@@ -7,7 +7,12 @@
 <meta name="description" content="奶蛙矿工：国民小游戏「黄金矿工」的奶蛙版。甩钩抓宝，天使是炸弹别碰，大块头会挣脱。">
 <title>奶蛙矿工 · 奶蛙小游戏</title>
 <link rel="icon" type="image/webp" href="../assets/nai/nai01-blob.webp">
-<link rel="stylesheet" href="style.css">
+<!-- 资源带 ?v= 版本号：这个静态站不发 Cache-Control / ETag，只给 Last-Modified，
+     浏览器会按"启发式缓存"自己算过期时间，期间新代码根本不会下载下来 ——
+     表现就是"线上明明更新了，我这台电脑还是老钩子"。
+     换 URL 是最干脆的绕开方式：改了前端就顺手把下面这几处 v 一起改掉。 -->
+<meta name="miner-build" content="20261020a">
+<link rel="stylesheet" href="style.css?v=20261020a">
 </head>
 <body>
 <div class="page">
@@ -221,13 +226,14 @@
     <p class="foot">
       奶蛙是网络梗 · 本项目仅供学习娱乐，不作商用 · 立绘取自
       <a href="https://yhsome.github.io/BigNaiWa/" target="_blank" rel="noopener">《合成大奶娃》</a>
+      <span class="foot-ver" id="footVer"></span>
     </p>
   </main>
 </div>
 
-<script src="../common/sfx.js"></script>
-<script src="logic.js"></script>
-<script src="cloud.js"></script>
-<script src="game.js"></script>
+<script src="../common/sfx.js?v=20261020a"></script>
+<script src="logic.js?v=20261020a"></script>
+<script src="cloud.js?v=20261020a"></script>
+<script src="game.js?v=20261020a"></script>
 </body>
 </html>

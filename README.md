@@ -366,6 +366,7 @@ _qa/                    数值验证工具
                         改名 / 刷新持久化 / 头像
   cloudui.mjs           云端接线验收（假云端）：全服榜渲染 / 起名补传 / 结算名次
   cloudprobe.mjs        真实云库预检：发布域名上跑 insert + select，确认 UPDATE 被拒
+  deploycheck.mjs       线上/本机逐文件哈希核对（判"漏发"还是"发了旧包"）
   crossdevice.mjs       跨设备可见性诊断：两套独立配置，验证 A 的成绩 B 看不见
   landscape.mjs         横屏快照与浮层溢出检查
   aimlib.cjs            瞄准与命中模型（解析解 + 离散判定一致性自检）
@@ -435,6 +436,9 @@ node _qa/cloudui.mjs "http://127.0.0.1:8137/miner/" "_qa/shots-cloudui"
 
 # 真实云库预检（必须打发布域名，本地 Origin 会被拒）
 node _qa/cloudprobe.mjs
+
+# 发布之后：线上是不是这份代码（逐文件 md5 核对 + 版本号一致性）
+node _qa/deploycheck.mjs "https://naiwa-mini-games.app.workbuddy.host/" "."
 ```
 
 覆盖流程：开始 → 射击 → 结束 → 重开 → 过关 → 小卖部 → 炸药 → 收工 → 横屏 → 暂停 → 恢复，
@@ -481,6 +485,27 @@ node _qa/probe.mjs "http://127.0.0.1:8137/miner/" \
 确保单个物品不会遮挡超过 60% 的射线。
 
 ## 故障排查
+
+### 线上更新了，某台电脑却还是老版本
+
+先别怀疑漏发文件。托管方返回的静态资源只有 `Last-Modified`，没有 `Cache-Control`
+也没有 `ETag`，浏览器于是按"启发式缓存"自行估算有效期（约为距最后修改时间的 10%），
+在这段时间内**根本不会向服务器询问**，拿到的自然是旧 `game.js`。服务器本身支持 304，
+问题在于它没被问到。
+
+处理办法是给资源换 URL：`miner/index.html` 里所有本地 `script` / `style` 都带
+`?v=<版本>`，版本号写在 `<meta name="miner-build">` 中，开始页页脚会显示它。
+改前端时把这几处 `v` 一起改掉（`deploycheck.mjs` 会检查它们是否一致），
+浏览器见到新 URL 就会重新下载。
+
+判断"线上到底是不是新包"用哈希，不用眼睛：
+
+```bash
+node _qa/deploycheck.mjs https://naiwa-mini-games.app.workbuddy.host/ .
+```
+
+它会把两个入口页引用的每个文件都取一遍，逐个与本机比 md5：线上 404 = 漏发，
+哈希不同 = 发了旧包。全部一致才算发布完成。
 
 手机上无声时，可按以下顺序排查：
 

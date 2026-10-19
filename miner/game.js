@@ -101,7 +101,21 @@
     overNameInput: document.getElementById('overNameInput'),
     btnSaveName: document.getElementById('btnSaveName'),
     overNameHint: document.getElementById('overNameHint'),
+
+    /* 页脚版本号 */
+    footVer: document.getElementById('footVer'),
   };
+
+  /* 资源版本：写在 index.html 的 <meta name="miner-build"> 里，
+   * 和脚本/样式上的 ?v= 是同一个值。
+   * 屏幕上显示它只有一个用处 —— 有人说"我这边还是老版本"时，
+   * 让他报这一串，就能立刻分清是缓存没换，还是真发了旧包。 */
+  var BUILD = (function () {
+    var m = document.querySelector('meta[name="miner-build"]');
+    var v = m ? (m.getAttribute('content') || '').trim() : '';
+    return v || 'dev';
+  })();
+  if (el.footVer) { el.footVer.textContent = 'v' + BUILD; }
 
   /* ============================ 状态 ============================ */
   var IMG = {};                       // 立绘缓存
@@ -1687,6 +1701,7 @@
   }, 2500);
 
   window.__miner = {
+    build: BUILD,
     get game() { return game; },
     get layout() { return game ? game.cfg.LAYOUT : null; },
     get board() { return board; },

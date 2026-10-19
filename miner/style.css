@@ -384,6 +384,13 @@ body {
   text-align: center; max-width: 100%;
 }
 .foot a { color: inherit; }
+/* 版本号单独一行、更淡：它不是内容，只是"我这台机器跑的是哪一版"的凭据，
+   遇到"我这边还是老版本"时，先让人报这一串比猜缓存靠谱。 */
+.foot-ver {
+  display: block; margin-top: .25em;
+  font-size: 10px; letter-spacing: .04em; opacity: .55;
+  font-variant-numeric: tabular-nums;
+}
 
 /* ---------- 小卖部 ---------- */
 .ov-title.shop {
