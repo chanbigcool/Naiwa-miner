@@ -76,6 +76,27 @@
     shopSpent: document.getElementById('shopSpent'),
     shopDyn: document.getElementById('shopDyn'),
     swingNote: document.getElementById('swingNote'),
+
+    /* 排行榜 */
+    ovBoard: document.getElementById('ovBoard'),
+    btnOpenBoard: document.getElementById('btnOpenBoard'),
+    lbMeta: document.getElementById('lbMeta'),
+    boardNameInput: document.getElementById('boardNameInput'),
+    boardNameNote: document.getElementById('boardNameNote'),
+    boardTabs: document.getElementById('boardTabs'),
+    boardList: document.getElementById('boardList'),
+    boardEmpty: document.getElementById('boardEmpty'),
+    btnBoardClose: document.getElementById('btnBoardClose'),
+
+    /* 结算卡上的上榜区 */
+    overLb: document.getElementById('overLb'),
+    overRankBadge: document.getElementById('overRankBadge'),
+    overRankTxt: document.getElementById('overRankTxt'),
+    btnOverBoard: document.getElementById('btnOverBoard'),
+    overNameRow: document.getElementById('overNameRow'),
+    overNameInput: document.getElementById('overNameInput'),
+    btnSaveName: document.getElementById('btnSaveName'),
+    overNameHint: document.getElementById('overNameHint'),
   };
 
   /* ============================ 状态 ============================ */
@@ -109,6 +130,149 @@
   }
 
   var best = { score: loadNum(BEST_KEY, 0), level: loadNum(LV_KEY, 1) };
+
+  /* ============================ 排行榜存档 ============================
+   * 规则全在 logic.js（排序、名次、裁剪），这里只负责读写和渲染。
+   *
+   * 两把钥匙：
+   *   BOARD_KEY —— 一局一条的成绩（上限 L.BOARD_LIMIT 条）
+   *   NAME_KEY  —— 机主名字，**一枚**。下次开局自动沿用，不用每局重输。
+   * 两个都包在 try 里：无痕模式 / 禁用存储时应该照样能玩，只是不上榜。
+   * ================================================================== */
+  var BOARD_KEY = 'naiwa_miner_board_v1';
+  var NAME_KEY = 'naiwa_miner_name';
+
+  function loadBoard() {
+    try {
+      return L.normalizeBoard(JSON.parse(localStorage.getItem(BOARD_KEY) || '[]'), L.BOARD_LIMIT);
+    } catch (e) { return []; }
+  }
+  function saveBoard() {
+    try { localStorage.setItem(BOARD_KEY, JSON.stringify(board)); } catch (e) { /* 忽略 */ }
+  }
+  function loadName() {
+    try { return L.sanitizeName(localStorage.getItem(NAME_KEY) || ''); } catch (e) { return ''; }
+  }
+  function saveName() {
+    try {
+      if (myName) { localStorage.setItem(NAME_KEY, myName); }
+      else { localStorage.removeItem(NAME_KEY); }
+    } catch (e) { /* 忽略 */ }
+  }
+
+  var board = loadBoard();
+  var myName = loadName();
+  var recordSeq = 0;
+  var lastRecordId = '';        // 最近一局那条（榜上找不到就是没挤进去）
+  var lastRunBest = false;      // 这一局是不是刷新了最高分
+  var boardKey = 'score';       // 当前看的是哪个榜
+  var boardBack = null;         // 从哪儿打开排行榜的，关掉要还回去
+
+  function fmt(n) {
+    return String(Math.floor(n || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function dateLabel(ts) {
+    var d = new Date(ts);
+    if (!isFinite(d.getTime())) { return '—'; }
+    var m = d.getMonth() + 1, day = d.getDate();
+    return m + '-' + (day < 10 ? '0' + day : day);
+  }
+  function copyRec(r) {
+    var c = {};
+    for (var k in r) { if (Object.prototype.hasOwnProperty.call(r, k)) { c[k] = r[k]; } }
+    return c;
+  }
+  function currentRecord() {
+    if (!lastRecordId) { return null; }
+    for (var i = 0; i < board.length; i++) {
+      if (board[i].id === lastRecordId) { return board[i]; }
+    }
+    return null;
+  }
+
+  /* 一局结束记一条。成绩为 0 的空局不占榜位 ——
+   * 否则开局就点"重开"会白白吃掉一格。 */
+  function recordRun(outcome) {
+    if (!game) { return null; }
+    if (game.score <= 0 && game.comboBest <= 0) { return null; }
+
+    var now = Date.now();
+    var rec = L.makeRecord({
+      id: now.toString(36) + '-' + (++recordSeq).toString(36),
+      name: myName || L.DEFAULT_NAME,
+      score: game.score,
+      level: game.level,
+      comboBest: game.comboBest,
+      preset: preset,
+      ts: now,
+      named: !!myName,
+      outcome: outcome,
+    });
+    board = L.insertRecord(board, rec, L.BOARD_LIMIT);
+    saveBoard();
+    // 弱成绩可能一进去就被裁掉，只有真在榜上才算"我的这一条"
+    lastRecordId = L.rankOf(board, rec.id, 'score') > 0 ? rec.id : '';
+    refreshLbMeta();
+    return rec;
+  }
+
+  /* 起名 / 改名。
+   *
+   * 归属规则：**没署名的 + 旧名字的，都算"你"**，一起改。
+   * 不这么做的话，第一次起名之后榜上会剩一堆"奶蛙矿工"，看起来像别人；
+   * 而把**别人的**名字也改掉更糟（一台设备两三个人玩是常事）。
+   * 所以只认"未署名"和"我上一个名字"这两种。 */
+  function setName(raw) {
+    var n = L.sanitizeName(raw);
+    if (!n) { return false; }
+    var old = myName;
+    myName = n;
+    saveName();
+
+    var patched = [];
+    for (var i = 0; i < board.length; i++) {
+      var r = board[i];
+      var mine = !r.named || (old && r.name === old);
+      if (!mine) { continue; }
+      if (r.name === n && r.named) { continue; }
+      var c = copyRec(r);
+      c.name = n; c.named = true;
+      patched.push(c);
+    }
+    for (var j = 0; j < patched.length; j++) {
+      board = L.insertRecord(board, patched[j], L.BOARD_LIMIT);
+    }
+    if (patched.length) { saveBoard(); }
+    refreshLbMeta();
+    return true;
+  }
+
+  function refreshLbMeta() {
+    if (!el.lbMeta) { return; }
+    if (!board.length) { el.lbMeta.textContent = '还没有记录'; return; }
+    var top = L.sortBoard(board, 'score')[0];
+    el.lbMeta.textContent = '共 ' + board.length + ' 条 · 第一 ' + top.name + ' ' + fmt(top.score) + ' 分';
+  }
+
+  /* "最高分 / 最远关卡"以**榜单**为准。
+   * 以前这两个数只看单独存的 best 键，结果榜上明明有 9800，结算卡还在喊
+   * "新纪录！最高分 8800"—— 同一屏两套数字，玩家一眼就能看出矛盾。
+   * 老键继续写（老版本存档能平滑过来），但显示取两者最大值。 */
+  function bestOf(key) {
+    var top = L.sortBoard(board, key)[0];
+    return top ? L.boardMetric(top, key) : 0;
+  }
+  function recordBest() {
+    return {
+      score: Math.max(best.score, bestOf('score')),
+      level: Math.max(best.level, bestOf('level')),
+    };
+  }
 
   /* ============================ 素材 ============================ */
   function preload() {
@@ -720,18 +884,20 @@
 
   /* ============================ 覆盖层 ============================ */
   var ALL_OV = null;
+  function ovList() {
+    if (!ALL_OV) { ALL_OV = [el.ovStart, el.ovPause, el.ovClear, el.ovOver, el.ovShop, el.ovBoard]; }
+    return ALL_OV;
+  }
   function show(node) {
-    if (!ALL_OV) { ALL_OV = [el.ovStart, el.ovPause, el.ovClear, el.ovOver, el.ovShop]; }
-    ALL_OV.forEach(function (o) { o.classList.toggle('show', o === node); });
+    ovList().forEach(function (o) { o.classList.toggle('show', o === node); });
   }
   function hideAll() {
-    if (!ALL_OV) { ALL_OV = [el.ovStart, el.ovPause, el.ovClear, el.ovOver, el.ovShop]; }
-    ALL_OV.forEach(function (o) { o.classList.remove('show'); });
+    ovList().forEach(function (o) { o.classList.remove('show'); });
   }
   function ovShown(node) { return node.classList.contains('show'); }
   function anyOverlayShown() {
-    if (!ALL_OV) { ALL_OV = [el.ovStart, el.ovPause, el.ovClear, el.ovOver, el.ovShop]; }
-    for (var i = 0; i < ALL_OV.length; i++) { if (ALL_OV[i].classList.contains('show')) { return true; } }
+    var list = ovList();
+    for (var i = 0; i < list.length; i++) { if (list[i].classList.contains('show')) { return true; } }
     return false;
   }
 
@@ -751,6 +917,95 @@
     if (game.score > best.score) { best.score = game.score; saveNum(BEST_KEY, best.score); changed = true; }
     if (game.level > best.level) { best.level = game.level; saveNum(LV_KEY, best.level); changed = true; }
     return changed;
+  }
+
+  /* ============================ 排行榜渲染 ============================ */
+
+  function syncBoardTabs() {
+    var bs = el.boardTabs.querySelectorAll('button');
+    Array.prototype.forEach.call(bs, function (b) {
+      var on = b.getAttribute('data-board') === boardKey;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+  }
+
+  function renderBoard() {
+    if (!el.boardList) { return; }
+    var rows = L.boardRows(board, boardKey, L.BOARD_VIEW);
+    var unit = L.BOARD_META[boardKey].unit;
+    var html = '';
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i];
+      var cls = 'bl-row' + (i < 3 ? ' p' + (i + 1) : '') + (r.id === lastRecordId ? ' me' : '');
+      var sub = '第 ' + r.level + ' 关 · 连击 ' + r.comboBest +
+        (r.outcome === 'quit' ? ' · 中途退出' : '') + ' · ' + dateLabel(r.ts);
+      html += '<li class="' + cls + '">' +
+        '<span class="bl-rank">' + (i + 1) + '</span>' +
+        '<span class="bl-who"><b>' + esc(r.name || L.DEFAULT_NAME) + '</b>' +
+          '<small>' + esc(sub) + '</small></span>' +
+        '<span class="bl-val">' + fmt(L.boardMetric(r, boardKey)) +
+          '<small>' + unit + '</small></span>' +
+        '</li>';
+    }
+    el.boardList.innerHTML = html;
+    el.boardEmpty.hidden = rows.length > 0;
+    syncBoardTabs();
+  }
+
+  /* 结算卡上的上榜区。三种状态：
+   *   没进榜（被裁掉了）→ 只报一句，不给起名框；
+   *   进榜但还没署名   → 亮出输入框，这是"留个名"的唯一时机；
+   *   进榜且已署名     → 报名次，不再打扰。 */
+  function paintOverBoard() {
+    if (!el.overLb) { return; }
+    var rec = currentRecord();
+    var rank = rec ? L.rankOf(board, rec.id, 'score') : 0;
+
+    el.overLb.classList.toggle('podium', rank === 1);
+    el.overRankBadge.className = 'lb-badge' +
+      (!rank ? ' none' : rank === 2 ? ' silver' : rank === 3 ? ' bronze' : rank > 3 ? ' plain' : '');
+
+    if (!rank) {
+      el.overRankBadge.textContent = '未上榜';
+      el.overRankTxt.textContent = '这局没挤进前 ' + L.BOARD_LIMIT + ' 条。';
+      el.overNameRow.hidden = true;
+      el.overNameHint.textContent = '榜上只留 ' + L.BOARD_LIMIT + ' 条，多挖几钩就进来了。';
+      return;
+    }
+
+    el.overRankBadge.textContent = '#' + rank;
+    el.overRankTxt.innerHTML = (lastRunBest && rank === 1)
+      ? '本机第 <b>1</b> 名 · 新纪录！'
+      : '本机第 <b>' + rank + '</b> 名 · 共 <b>' + board.length + '</b> 条';
+
+    var needName = !rec.named;
+    el.overNameRow.hidden = !needName;
+    if (needName) {
+      el.overNameHint.textContent = '最多 8 个字 · 只存在这台设备，下次自动带上。';
+    } else {
+      el.overNameHint.innerHTML = '以「<b>' + esc(rec.name) + '</b>」上榜 · 名字只存本机，下次自动用。';
+    }
+  }
+
+  function openBoard(from) {
+    boardBack = from || null;
+    boardKey = 'score';                 // 每次打开都回到总分榜
+    el.boardNameInput.value = myName || '';
+    el.boardNameNote.textContent = myName ? '改完自动保存' : '起个名，下次自动用';
+    renderBoard();
+    show(el.ovBoard);
+  }
+
+  function closeBoard() {
+    var back = boardBack;
+    boardBack = null;
+    if (back) {
+      show(back);
+      if (back === el.ovOver) { paintOverBoard(); }
+    } else {
+      hideAll();
+    }
   }
 
   /* 该不该在"过关面板"上把小卖部入口亮出来 */
@@ -785,9 +1040,19 @@
   }
 
   function onLevelFail(e) {
-    var isBest = commitBest();
+    /* 先记账，再渲染 —— 面板上的名次来自刚刚写进去的这一条。
+     * 顺序反了会永远显示上一局的名次。
+     *
+     * "新纪录"必须在插入之前判断：插进去之后，第一名就是这一局了，
+     * 拿它跟榜比永远成立。 */
+    var prevBest = recordBest().score;
+    var isBest = game.score > prevBest;
+    recordRun('fail');
+    lastRunBest = isBest;
+    commitBest();
     el.overSub.innerHTML = '第 <b>' + e.level + '</b> 关卡住了：门槛 <b>' + e.target +
       '</b> 分，你差了 <b>' + (e.target - e.score) + '</b> 分。';
+    paintOverBoard();
     tally(el.overTally, [
       { label: '总分', value: e.score },
       { label: '最远关卡', value: '第 ' + e.level + ' 关' },
@@ -796,9 +1061,9 @@
       { label: '被挣脱', value: e.escapes, kind: e.escapes > 0 ? 'bad' : '' },
       { label: '小卖部花掉', value: e.shopSpent },
     ]);
-    el.overBest.innerHTML = isBest
-      ? '新纪录！最高分 <b>' + best.score + '</b> · 最远到第 <b>' + best.level + '</b> 关'
-      : '最高分 <b>' + best.score + '</b> · 最远到第 <b>' + best.level + '</b> 关';
+    var rb = recordBest();
+    /* "新纪录"只在上面的上榜区说一次就够了 —— 同一屏喊两遍显得吵。 */
+    el.overBest.innerHTML = '最高分 <b>' + rb.score + '</b> · 最远到第 <b>' + rb.level + '</b> 关';
     show(el.ovOver);
   }
 
@@ -938,6 +1203,10 @@
   }
 
   function quitToStart() {
+    /* 中途退出也留档：一条打到第 8 关的成绩，不该因为没"死"就凭空消失。
+     * 空局（0 分）由 recordRun 自己挡掉。 */
+    recordRun('quit');
+    lastRunBest = false;
     paused = false;
     newRun();
     fit();
@@ -946,8 +1215,9 @@
   }
 
   function refreshBestLine() {
-    el.bestScore.textContent = best.score;
-    el.bestLevel.textContent = best.level;
+    var rb = recordBest();
+    el.bestScore.textContent = rb.score;
+    el.bestLevel.textContent = rb.level;
   }
 
   /* 开始页显示当前的摆动速度，让"越往后越快"这件事是可见的 */
@@ -1031,6 +1301,56 @@
   el.btnShopGo.addEventListener('click', toNextLevel);
   el.dyn.addEventListener('click', tryBoom);
   el.keep.addEventListener('click', tryCashOut);
+
+  /* ---- 排行榜：入口、返回、换榜、起名 ---- */
+  el.btnOpenBoard.addEventListener('click', function () { openBoard(el.ovStart); });
+  el.btnOverBoard.addEventListener('click', function () { openBoard(el.ovOver); });
+  el.btnBoardClose.addEventListener('click', closeBoard);
+
+  el.boardTabs.addEventListener('click', function (ev) {
+    var b = ev.target.closest ? ev.target.closest('button[data-board]') : null;
+    if (!b) { return; }
+    boardKey = b.getAttribute('data-board');
+    if (SFX) { SFX.click(); }
+    renderBoard();
+  });
+
+  function commitBoardName() {
+    var raw = el.boardNameInput.value;
+    if (!setName(raw)) {
+      el.boardNameInput.value = myName || '';
+      el.boardNameNote.textContent = '名字不能空着';
+      el.boardNameInput.classList.add('bad');
+      setTimeout(function () { el.boardNameInput.classList.remove('bad'); }, 420);
+      return false;
+    }
+    el.boardNameInput.value = myName;
+    el.boardNameNote.textContent = '已保存';
+    renderBoard();
+    return true;
+  }
+  el.boardNameInput.addEventListener('change', commitBoardName);
+  el.boardNameInput.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Enter') { ev.preventDefault(); commitBoardName(); el.boardNameInput.blur(); }
+  });
+
+  /* 结算卡上的"上榜"：名字只在这里输入一次，之后每局自动沿用。 */
+  function submitOverName() {
+    if (setName(el.overNameInput.value)) {
+      if (SFX) { SFX.good(3); }
+      el.overNameInput.value = '';
+      paintOverBoard();
+      return true;
+    }
+    el.overNameInput.classList.add('bad');
+    el.overNameInput.focus();
+    setTimeout(function () { el.overNameInput.classList.remove('bad'); }, 420);
+    return false;
+  }
+  el.btnSaveName.addEventListener('click', submitOverName);
+  el.overNameInput.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Enter') { ev.preventDefault(); submitOverName(); }
+  });
 
   el.shopList.addEventListener('click', function (ev) {
     var b = ev.target.closest ? ev.target.closest('button[data-buy]') : null;
@@ -1125,6 +1445,7 @@
   fit();
   buildLegend();
   refreshBestLine();
+  refreshLbMeta();
   if (SFX && SFX.isMuted && SFX.isMuted()) { el.mute.classList.add('off'); }
   raf = requestAnimationFrame(loop);
 
@@ -1136,6 +1457,8 @@
   window.__miner = {
     get game() { return game; },
     get layout() { return game ? game.cfg.LAYOUT : null; },
+    get board() { return board; },
+    get name() { return myName; },
     start: start,
     fit: fit,
   };  // 方便调试

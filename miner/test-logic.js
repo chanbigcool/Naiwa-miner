@@ -1622,6 +1622,136 @@ test('relayout：同一个布局重复调用是幂等的（不会每次重铺）
 });
 
 /* ==================================================================================
+ * 排行榜（本机存档）
+ * ================================================================================== */
+function rec(o) {
+  o = o || {};
+  return L.makeRecord({
+    id: o.id || ('id-' + (o.i === undefined ? 0 : o.i)),
+    name: o.name === undefined ? '奶蛙' : o.name,
+    score: o.score === undefined ? 0 : o.score,
+    level: o.level === undefined ? 1 : o.level,
+    comboBest: o.combo === undefined ? 0 : o.combo,
+    ts: o.ts === undefined ? 1700000000000 : o.ts,
+    preset: o.preset,
+    outcome: o.outcome,
+  });
+}
+
+test('排行榜 · 名字清洗：单行、去标签、按字数截断', function () {
+  eq(L.sanitizeName('  奶蛙  '), '奶蛙');
+  eq(L.sanitizeName('奶 蛙\n矿工'), '奶 蛙 矿工', '换行要变空格，不能撑破单行');
+  eq(L.sanitizeName('<b>坏</b>'), '坏', '标签要整段摘掉，不能留下 "/b" 这种碎渣');
+  eq(L.sanitizeName(''), '');
+  eq(L.sanitizeName(null), '');
+  eq(L.sanitizeName('一二三四五六七八九十'), '一二三四五六七八', '超过 8 字要截断');
+  eq(L.sanitizeName('奶\u200b蛙'), '奶 蛙', '零宽字符不该混进名字里');
+  eq(L.sanitizeName('🐸🐸🐸🐸🐸'), '🐸🐸🐸🐸', 'emoji 是代理对，截断不能切出半个字符');
+});
+
+test('排行榜 · 没起名时用默认名，但"清空"和"没名字"能区分', function () {
+  eq(L.displayName(''), L.DEFAULT_NAME);
+  eq(L.displayName('   '), L.DEFAULT_NAME);
+  eq(L.displayName('矿工甲'), '矿工甲');
+  eq(L.sanitizeName('   '), '', 'sanitize 自己不该兜底，兜底是 displayName 的事');
+});
+
+test('排行榜 · 记录规范化：脏数据一律夹到合法区间', function () {
+  var r = L.makeRecord({ name: ' 甲 ', score: -50, level: -3, comboBest: -2, preset: 'nope', ts: -1 });
+  eq(r.score, 0, '负分夹到 0');
+  eq(r.level, 1, '关卡最低 1');
+  eq(r.comboBest, 0);
+  eq(r.preset, 'standard', '未知手感回落到标准');
+  eq(r.ts, 0);
+  eq(r.name, '甲');
+
+  var r2 = L.makeRecord({ score: 12.9, level: 3.7 });
+  eq(r2.score, 12, '小数要取整，不能出现 12.9 分');
+  eq(r2.level, 3);
+});
+
+test('排行榜 · 三个榜各按自己的指标排，同分时先到者在前', function () {
+  var list = [
+    rec({ id: 'a', i: 1, score: 500, level: 3, combo: 6, ts: 1000 }),
+    rec({ id: 'b', i: 2, score: 900, level: 2, combo: 4, ts: 2000 }),
+    rec({ id: 'c', i: 3, score: 900, level: 5, combo: 9, ts: 3000 }),
+    rec({ id: 'd', i: 4, score: 900, level: 4, combo: 2, ts: 1500 }),
+  ];
+
+  eq(L.sortBoard(list, 'score').map(function (x) { return x.id; }).join(''),
+    'dbca', '同分 900 的三条按"先到"排：d(1500) → b(2000) → c(3000)，然后才是 500 的 a');
+
+  eq(L.sortBoard(list, 'level').map(function (x) { return x.id; }).join(''),
+    'cdab', '关卡榜：c(5) → d(4) → a(3) → b(2)');
+
+  eq(L.sortBoard(list, 'combo').map(function (x) { return x.id; }).join(''),
+    'cabd', '连击榜：c(9) → a(6) → b(4) → d(2)');
+
+  eq(L.boardRows(list, 'score', 2).length, 2, '榜只展示前 N 条');
+});
+
+test('排行榜 · 名次从 1 起算，不在榜上返回 0', function () {
+  var list = [
+    rec({ id: 'a', i: 1, score: 900 }),
+    rec({ id: 'b', i: 2, score: 500 }),
+  ];
+  eq(L.rankOf(list, 'a', 'score'), 1);
+  eq(L.rankOf(list, 'b', 'score'), 2);
+  eq(L.rankOf(list, 'zzz', 'score'), 0);
+});
+
+test('排行榜 · 同 id 插入视为覆盖（改名不会多出一条成绩）', function () {
+  var list = [rec({ id: 'x', i: 1, score: 800, name: '旧名' })];
+  var out = L.insertRecord(list, rec({ id: 'x', i: 1, score: 800, name: '新名' }), 40);
+  eq(out.length, 1, '同 id 不该变成两条');
+  eq(out[0].name, '新名');
+  eq(list.length, 1, 'insertRecord 不能改入参');
+});
+
+test('排行榜 · 裁剪时三个榜的头部都必须活下来', function () {
+  var list = [];
+  for (var i = 0; i < 30; i++) {
+    list.push(rec({ id: 's' + i, i: i, score: 1000 + i, level: 1, combo: 0, ts: 1000 + i }));
+  }
+  // 总分很低，但关卡最高
+  list.push(rec({ id: 'deep', i: 99, score: 10, level: 20, combo: 0, ts: 5000 }));
+  // 总分很低，但连击最高
+  list.push(rec({ id: 'combo', i: 98, score: 10, level: 1, combo: 15, ts: 5001 }));
+
+  var out = L.pruneRecords(list, 9);
+  eq(out.length, 9, '裁到 9 条');
+  var ids = out.map(function (x) { return x.id; });
+  assert(ids.indexOf('deep') >= 0, '关卡榜第一被裁掉了 —— 只按总分裁就会出这种事');
+  assert(ids.indexOf('combo') >= 0, '连击榜第一被裁掉了');
+  assert(ids.indexOf('s29') >= 0, '总分第一必须在');
+
+  // 结果确定：同一份输入跑两次，顺序必须完全一样
+  var again = L.pruneRecords(list, 9).map(function (x) { return x.id; }).join(',');
+  eq(ids.join(','), again, '裁剪结果必须可复现，否则每次刷新榜都会跳');
+});
+
+test('排行榜 · 存档读回要做体检：垃圾、重复 id、空记录都挡掉', function () {
+  var raw = [
+    rec({ id: 'ok', i: 1, score: 500 }),
+    null,
+    'x',
+    { id: 'dup', score: 500, level: 2, ts: 10 },
+    { id: 'dup', score: 900, level: 3, ts: 11 },
+    { id: 'blank', score: 0, level: 1, comboBest: 0, ts: 12 },
+    { id: 'bad', score: 300, level: 'x', ts: 13 },
+  ];
+  var out = L.normalizeBoard(raw, 40);
+  eq(out.length, 3, 'null / 字符串 / 空记录都该被过滤');
+  var ids = out.map(function (x) { return x.id; });
+  assert(ids.indexOf('blank') < 0, '什么都没干的记录不该占榜位');
+  eq(ids[1], 'dup', '重复 id 只留先读到的那条');
+  eq(out[1].score, 500, '重复 id 保留的是第一条，不是分数高的那条');
+  eq(out[2].level, 1, '关卡字段是垃圾时回落成 1，整条记录仍然可用');
+  eq(L.normalizeBoard(null).length, 0, '读不到东西就返回空榜');
+  eq(L.normalizeBoard([]).length, 0);
+});
+
+/* ==================================================================================
  * 汇总
  * ================================================================================== */
 console.log(lines.join('\n'));

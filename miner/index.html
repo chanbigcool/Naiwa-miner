@@ -94,6 +94,17 @@
               每关都会配发炸药，过关后可以去<b>小卖部</b>把赚到的分换成下一关的道具。
             </p>
             <p class="ov-best">最高 <b id="bestScore">0</b> 分 · 最远到第 <b id="bestLevel">1</b> 关</p>
+
+            <button class="lb-entry" id="btnOpenBoard" type="button">
+              <span class="lbe-badge" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="100%" height="100%">
+                  <path class="lbe-cup" d="M7 4h10v3.1a5 5 0 0 1-10 0V4z"/>
+                  <path class="lbe-line" d="M7 5.1H4.9v1.3A3.3 3.3 0 0 0 7.9 9.6M17 5.1h2.1v1.3a3.3 3.3 0 0 1-3 3.2M12 12.1v3.4M8.8 18.6h6.4" fill="none" stroke-width="1.7" stroke-linecap="round"/>
+                </svg>
+              </span>
+              <span class="lbe-txt">排行榜</span>
+              <span class="lbe-meta" id="lbMeta">还没有记录</span>
+            </button>
           </div>
         </div>
 
@@ -122,9 +133,57 @@
           <div class="ov-card">
             <div class="ov-title lose">没达标</div>
             <p class="ov-sub" id="overSub"></p>
+
+            <!-- 上榜区：一局结束只记一条。没起过名的人在这里留名，
+                 起过名的就直接显示名次（名字存在本机，下次自动沿用）。 -->
+            <div class="lb-save" id="overLb">
+              <div class="lb-save-top">
+                <span class="lb-badge" id="overRankBadge">#1</span>
+                <span class="lb-save-txt" id="overRankTxt"></span>
+                <button class="lb-link" id="btnOverBoard" type="button">看榜</button>
+              </div>
+              <div class="lb-name-row" id="overNameRow">
+                <input class="lb-name-input" id="overNameInput" type="text" maxlength="8"
+                       placeholder="留个名，这条就算你的" autocomplete="off" spellcheck="false"
+                       enterkeyhint="done" aria-label="你的名字">
+                <button class="lb-save-btn" id="btnSaveName" type="button">上榜</button>
+              </div>
+              <p class="lb-name-hint" id="overNameHint"></p>
+            </div>
+
             <div class="tally" id="overTally"></div>
             <p class="ov-best" id="overBest"></p>
             <button class="btn primary big" id="btnAgain" type="button">再来一局</button>
+          </div>
+        </div>
+
+        <!-- ========== 排行榜 ==========
+             三个榜看同一份记录，只是排序键不同（总分 / 关卡 / 连击）。
+             名字是全机共用的一枚，改名会连带把"最近这一局"那条一起改 ——
+             否则改完名旧成绩还挂在旧名下，像两个人。 -->
+        <div class="overlay" id="ovBoard">
+          <div class="ov-card">
+            <div class="ov-title board">排行榜</div>
+            <p class="ov-sub">这台设备上的成绩 · 一局记一条</p>
+
+            <div class="board-name">
+              <label for="boardNameInput">我的名字</label>
+              <input class="board-name-input" id="boardNameInput" type="text" maxlength="8"
+                     placeholder="还没起名" autocomplete="off" spellcheck="false"
+                     enterkeyhint="done">
+              <span class="board-name-note" id="boardNameNote">改完自动保存</span>
+            </div>
+
+            <div class="board-tabs" id="boardTabs" role="tablist">
+              <button type="button" data-board="score" class="on" role="tab">总分</button>
+              <button type="button" data-board="level" role="tab">关卡</button>
+              <button type="button" data-board="combo" role="tab">连击</button>
+            </div>
+
+            <ol class="board-list" id="boardList"></ol>
+            <p class="board-empty" id="boardEmpty">榜上还是空的 —— 打完一局就会有一条。</p>
+
+            <button class="btn primary" id="btnBoardClose" type="button">回去挖矿</button>
           </div>
         </div>
 

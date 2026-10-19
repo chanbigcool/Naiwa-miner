@@ -433,6 +433,141 @@ body {
 }
 .shop-note b { color: var(--gold-dark); }
 
+/* ---------- 排行榜 ----------
+ * 两个入口共用一套视觉：开始页底部一枚胶囊（排行榜），结算卡上一块上榜区。
+ * 榜单本身是 <ol>，名次用圆牌而不是"1."—— 数字列表在窄屏上容易被挤成两行。
+ */
+.lb-entry {
+  display: flex; align-items: center; gap: .45em;
+  width: 100%; margin: .55em 0 0; padding: .5em .7em;
+  font: inherit; font-size: .74em; color: var(--ink);
+  background: rgba(255, 255, 255, .9);
+  border: 1px solid rgba(126, 84, 44, .16);
+  border-radius: .7em; cursor: pointer;
+  box-shadow: 0 2px 8px rgba(126, 84, 44, .1);
+  transition: transform .16s cubic-bezier(.22, 1, .36, 1), box-shadow .16s, border-color .16s;
+}
+.lb-entry:hover { border-color: rgba(232, 163, 61, .5); box-shadow: 0 6px 16px rgba(126, 84, 44, .16); }
+.lb-entry:active { transform: scale(.985); }
+.lb-entry:focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; }
+.lbe-badge { flex: 0 0 auto; width: 1.5em; height: 1.5em; color: var(--gold-dark); }
+.lbe-cup { fill: currentColor; }
+.lbe-line { stroke: currentColor; }
+.lbe-txt { font-weight: 700; letter-spacing: .04em; }
+.lbe-meta {
+  margin-left: auto; min-width: 0;
+  font-size: .86em; font-weight: 600; color: var(--ink-soft);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* 结算卡上的上榜区 */
+.lb-save {
+  margin: 0 0 .8em; padding: .6em .65em;
+  border-radius: .7em; text-align: left;
+  background: linear-gradient(180deg, rgba(255, 247, 231, .98), rgba(255, 251, 243, .98));
+  border: 1px solid rgba(232, 163, 61, .3);
+}
+.lb-save.podium {
+  background: linear-gradient(180deg, #fff4d6, #fffaf0);
+  box-shadow: 0 0 0 1px rgba(232, 163, 61, .45) inset, 0 6px 18px rgba(232, 163, 61, .18);
+}
+.lb-save-top { display: flex; align-items: center; gap: .45em; }
+.lb-badge {
+  flex: 0 0 auto; min-width: 2.4em; padding: .12em .35em;
+  border-radius: 99px; text-align: center;
+  font-size: .68em; font-weight: 800; letter-spacing: .02em;
+  font-variant-numeric: tabular-nums;
+  color: #7a4a06; background: linear-gradient(135deg, #ffd76b, #e8a33d);
+  box-shadow: 0 2px 6px rgba(232, 163, 61, .35);
+}
+.lb-badge.none { color: var(--ink-soft); background: rgba(126, 84, 44, .12); box-shadow: none; }
+/* 名次徽章跟榜单里的圆牌同色：金 / 银 / 铜 / 其余中性 —— 第 7 名不该顶着一块金牌 */
+.lb-badge.silver { color: #48525c; background: linear-gradient(135deg, #e6eaef, #b9c2ca); box-shadow: 0 2px 6px rgba(140, 150, 160, .3); }
+.lb-badge.bronze { color: #6b3d18; background: linear-gradient(135deg, #f2d0a9, #c98d5a); box-shadow: 0 2px 6px rgba(201, 141, 90, .3); }
+.lb-badge.plain { color: var(--ink-soft); background: rgba(126, 84, 44, .12); box-shadow: none; }
+.lb-save-txt { flex: 1 1 auto; min-width: 0; font-size: .72em; font-weight: 600; color: var(--ink); line-height: 1.4; }
+.lb-save-txt b { color: var(--gold-dark); font-variant-numeric: tabular-nums; }
+.lb-link {
+  flex: 0 0 auto; font: inherit; font-size: .64em; font-weight: 700;
+  color: var(--ink-soft); background: none; border: 0; cursor: pointer;
+  padding: .3em .2em; text-decoration: underline; text-underline-offset: .18em;
+}
+.lb-link:hover { color: var(--gold-dark); }
+
+.lb-name-row { display: flex; gap: .35em; margin-top: .5em; }
+.lb-name-row[hidden] { display: none; }
+.lb-name-input, .board-name-input {
+  flex: 1 1 auto; min-width: 0;
+  font: inherit; font-size: .76em; color: var(--ink);
+  padding: .45em .6em; border-radius: .55em;
+  border: 1px solid rgba(126, 84, 44, .22);
+  background: #fff; outline: none;
+  transition: border-color .16s, box-shadow .16s;
+}
+.lb-name-input::placeholder, .board-name-input::placeholder { color: rgba(122, 101, 86, .6); }
+.lb-name-input:focus, .board-name-input:focus {
+  border-color: var(--gold); box-shadow: 0 0 0 3px rgba(232, 163, 61, .18);
+}
+.lb-name-input.bad { border-color: var(--bad); animation: dynNope .3s ease-out; }
+.lb-save-btn {
+  flex: 0 0 auto; font: inherit; font-size: .74em; font-weight: 700; letter-spacing: .02em;
+  padding: .45em .9em; border: 0; border-radius: .55em; cursor: pointer; color: #fff;
+  background: linear-gradient(135deg, #ffb347, #e8912a);
+  box-shadow: 0 4px 12px rgba(232, 145, 42, .3);
+}
+.lb-save-btn:active { transform: scale(.97); }
+.lb-name-hint { margin: .38em 0 0; font-size: .62em; line-height: 1.55; color: var(--ink-soft); }
+
+/* 排行榜浮层 */
+.ov-title.board {
+  background: linear-gradient(100deg, #ffb347, #e8912a 55%, #b26a12);
+  -webkit-background-clip: text; background-clip: text;
+}
+.board-name {
+  display: flex; align-items: center; gap: .4em;
+  margin: 0 0 .6em; padding: .35em .5em;
+  border-radius: .6em; background: rgba(126, 84, 44, .07);
+}
+.board-name label { flex: 0 0 auto; font-size: .68em; font-weight: 700; color: var(--ink-soft); }
+.board-name-input { font-size: .74em; padding: .35em .55em; }
+.board-name-note { flex: 0 0 auto; font-size: .6em; color: var(--ink-soft); }
+
+.board-tabs { display: flex; gap: .25em; margin: 0 0 .55em; padding: .22em; border-radius: 99px; background: rgba(126, 84, 44, .09); }
+.board-tabs button {
+  flex: 1 1 0; font: inherit; font-size: .72em; font-weight: 700;
+  padding: .34em .2em; border: 0; border-radius: 99px; cursor: pointer;
+  color: var(--ink-soft); background: transparent; transition: all .18s;
+}
+.board-tabs button.on {
+  color: #fff;
+  background: linear-gradient(135deg, #ffb347, #e8912a);
+  box-shadow: 0 4px 10px rgba(232, 145, 42, .28);
+}
+
+.board-list { list-style: none; margin: 0 0 .7em; padding: 0; display: grid; gap: .28em; text-align: left; }
+.bl-row {
+  display: flex; align-items: center; gap: .5em;
+  padding: .36em .55em; border-radius: .55em;
+  background: rgba(126, 84, 44, .055);
+}
+.bl-row.me { background: linear-gradient(90deg, rgba(255, 196, 107, .3), rgba(255, 246, 226, .55)); box-shadow: 0 0 0 1px rgba(232, 163, 61, .4) inset; }
+.bl-rank {
+  flex: 0 0 auto; width: 1.55em; height: 1.55em;
+  display: grid; place-items: center; border-radius: 50%;
+  font-size: .66em; font-weight: 800; color: var(--ink-soft);
+  background: rgba(126, 84, 44, .1); font-variant-numeric: tabular-nums;
+}
+.bl-row.p1 .bl-rank { color: #7a4a06; background: linear-gradient(135deg, #ffd76b, #e8a33d); }
+.bl-row.p2 .bl-rank { color: #48525c; background: linear-gradient(135deg, #e6eaef, #b9c2ca); }
+.bl-row.p3 .bl-rank { color: #6b3d18; background: linear-gradient(135deg, #f2d0a9, #c98d5a); }
+.bl-who { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
+.bl-who b { font-size: .76em; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bl-who small { font-size: .62em; color: var(--ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bl-val { flex: 0 0 auto; font-size: .92em; font-weight: 800; color: var(--gold-dark); font-variant-numeric: tabular-nums; }
+.bl-val small { font-size: .58em; font-weight: 700; color: var(--ink-soft); margin-left: .12em; }
+.board-empty { margin: 0 0 .9em; font-size: .72em; line-height: 1.6; color: var(--ink-soft); }
+.board-empty[hidden] { display: none; }
+
 /* ---------- 动画 ---------- */
 @keyframes breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.035); } }
 @keyframes pop { 0% { transform: scale(1); } 40% { transform: scale(1.16); } 100% { transform: scale(1); } }

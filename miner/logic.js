@@ -1384,7 +1384,179 @@
   }
 
   /* =====================================================================
-   * 10. 导出
+   * 10. 排行榜（本机存档 · 纯函数）
+   * -------------------------------------------------------------------
+   * 这里只管"一条记录怎么造、怎么排、怎么裁"，不碰 localStorage（那是 game.js 的事）。
+   * 放进逻辑层是因为这三件事全是规则，而且最容易写错 —— 名次算错、同分顺序每次刷新
+   * 都变、裁剪把别人的纪录剪掉，玩家一眼就能看出来。
+   *
+   * 四条口径（改之前先想清楚）：
+   *   1. **一局一条**，不是一关一条。关卡之间分数是累加的，按关记等于把一条命
+   *      拆成好几条，榜会被同一个人刷满。
+   *   2. **分数相同，先到者在前**（ts 小的赢）。同一秒内的再按 id 兜底，
+   *      保证任何时候排序结果都一样。
+   *   3. **裁剪必须保住三个榜各自的头部**。只按总分裁的话，"总分很低但连击 14"
+   *      的那条会被剪掉 —— 而那正是连击榜唯一该留的东西。
+   *   4. 记录是**不可变的**：所有函数返回新数组，不改入参。存档层因此可以放心
+   *      先渲染再落盘，不会出现"界面上有、硬盘上没有"的半截状态。
+   * ===================================================================== */
+
+  var BOARD_LIMIT = 40;                    // 存档上限（不是展示上限）
+  var BOARD_VIEW = 8;                      // 每个榜展示前几名
+  var NAME_MAX = 8;                        // 名字最长几个字
+  var DEFAULT_NAME = '奶蛙矿工';
+
+  var BOARD_KEYS = ['score', 'level', 'combo'];
+  var BOARD_META = {
+    score: { label: '总分', unit: '分' },
+    level: { label: '关卡', unit: '关' },
+    combo: { label: '连击', unit: '连' },
+  };
+
+  /* 三个榜各看哪个数 */
+  function boardMetric(rec, key) {
+    if (key === 'level') { return rec.level || 0; }
+    if (key === 'combo') { return rec.comboBest || 0; }
+    return rec.score || 0;
+  }
+
+  function intIn(v, lo, hi) {
+    var n = Math.floor(Number(v));
+    if (!isFinite(n)) { return lo; }
+    return clamp(n, lo, hi);
+  }
+
+  /* 名字清洗：单行、无标签、无零宽字符、最多 NAME_MAX 个字。
+   * 返回空串表示"没有有效内容"，由调用方自己决定兜底成什么 ——
+   * 这样"清空输入框"和"没起过名"就能被区分开。 */
+  function sanitizeName(raw) {
+    var s = String(raw == null ? '' : raw);
+    s = s.replace(/<\/?[a-zA-Z][^>]{0,20}>/g, '');           // 整段标签先摘掉，别留下 "/b" 这种碎渣
+    s = s.replace(/[\u0000-\u001f\u007f\u200b-\u200f\u2028\u2029<>]/g, ' ');
+    s = s.replace(/\s+/g, ' ').trim();
+    if (s.length > NAME_MAX) {
+      s = s.slice(0, NAME_MAX);
+      // 别把 emoji 的代理对切成半个字符（那会渲染成 �）
+      if (/[\uD800-\uDBFF]$/.test(s)) { s = s.slice(0, -1); }
+    }
+    return s;
+  }
+
+  function displayName(raw) {
+    return sanitizeName(raw) || DEFAULT_NAME;
+  }
+
+  /* 把任意来源（存档 / 输入）的一条记录收拾成规范形状。
+   * 脏数据在这里就被挡掉，渲染层不必再防御。 */
+  function makeRecord(input) {
+    input = input || {};
+    var comboRaw = input.comboBest === undefined ? input.combo : input.comboBest;
+    var rec = {
+      id: String(input.id == null ? '' : input.id),
+      name: sanitizeName(input.name),
+      score: intIn(input.score, 0, 1000000000),
+      level: intIn(input.level, 1, 999),
+      comboBest: intIn(comboRaw, 0, 9999),
+      preset: (input.preset === 'relaxed' || input.preset === 'hard') ? input.preset : 'standard',
+      ts: intIn(input.ts, 0, 4102444800000),          // 上限 2100-01-01，挡住离谱时间戳
+      named: !!input.named,
+      outcome: input.outcome === 'quit' ? 'quit' : 'fail',
+    };
+    if (!rec.id) { rec.id = 'r' + rec.ts.toString(36); }
+    return rec;
+  }
+
+  /* 排序：主指标降序 → 总分降序 → 先到者在前 → id 字典序兜底。
+   * 最后那两级不是为了"更好看"，是为了**结果确定** ——
+   * 没有它们，两条同分记录在两次刷新里的顺序可能不一样，玩家会以为榜在乱跳。 */
+  function sortBoard(list, key) {
+    var arr = (list || []).slice();
+    arr.sort(function (a, b) {
+      var d = boardMetric(b, key) - boardMetric(a, key);
+      if (d) { return d; }
+      if (b.score !== a.score) { return b.score - a.score; }
+      if (a.ts !== b.ts) { return a.ts - b.ts; }
+      return a.id < b.id ? -1 : (a.id > b.id ? 1 : 0);
+    });
+    return arr;
+  }
+
+  /* 某条记录在某个榜上的名次（1 起）。不在榜上返回 0。 */
+  function rankOf(list, id, key) {
+    var arr = sortBoard(list, key);
+    for (var i = 0; i < arr.length; i++) {
+      if (arr[i].id === id) { return i + 1; }
+    }
+    return 0;
+  }
+
+  /* 裁到 limit 条，但先给三个榜的头部各留位置，剩下的名额按"最近打的"补满。 */
+  function pruneRecords(list, limit) {
+    limit = limit === undefined ? BOARD_LIMIT : limit;
+    var arr = (list || []).slice();
+    if (arr.length <= limit) { return arr; }
+
+    var quota = Math.max(1, Math.min(BOARD_VIEW, Math.floor(limit / BOARD_KEYS.length)));
+    var keep = [], seen = {};
+    function take(r) {
+      if (!r || seen[r.id]) { return; }
+      seen[r.id] = 1;
+      keep.push(r);
+    }
+
+    for (var i = 0; i < BOARD_KEYS.length; i++) {
+      var head = sortBoard(arr, BOARD_KEYS[i]).slice(0, quota);
+      for (var j = 0; j < head.length; j++) { take(head[j]); }
+    }
+
+    var byRecent = arr.slice().sort(function (a, b) {
+      if (b.ts !== a.ts) { return b.ts - a.ts; }
+      return a.id < b.id ? -1 : (a.id > b.id ? 1 : 0);
+    });
+    for (var k = 0; k < byRecent.length && keep.length < limit; k++) { take(byRecent[k]); }
+
+    return sortBoard(keep.slice(0, limit), 'score');
+  }
+
+  /* 插入一条（同 id 视为同一条 → 覆盖）。改名就是靠这条同 id 覆盖实现的，
+   * 否则改一次名会多出一条重复成绩。 */
+  function insertRecord(list, rec, limit) {
+    var r = makeRecord(rec);
+    var out = [];
+    var src = list || [];
+    for (var i = 0; i < src.length; i++) {
+      if (src[i] && src[i].id === r.id) { continue; }
+      out.push(src[i]);
+    }
+    out.push(r);
+    return pruneRecords(out, limit);
+  }
+
+  /* 存档读回来的东西一律过这里：挡掉 null / 字符串 / 字段乱填 / 重复 id。 */
+  function normalizeBoard(raw, limit) {
+    var arr = [], seen = {};
+    if (!raw || typeof raw.length !== 'number') { return arr; }
+    for (var i = 0; i < raw.length; i++) {
+      var item = raw[i];
+      if (!item || typeof item !== 'object') { continue; }
+      var rec = makeRecord(item);
+      if (seen[rec.id]) { continue; }
+      // 0 分 1 关 0 连击 = 什么都没干，不占榜位
+      if (rec.score <= 0 && rec.level <= 1 && rec.comboBest <= 0) { continue; }
+      seen[rec.id] = 1;
+      arr.push(rec);
+    }
+    return pruneRecords(arr, limit);
+  }
+
+  /* 渲染层要的那几行 */
+  function boardRows(list, key, view) {
+    view = view === undefined ? BOARD_VIEW : view;
+    return sortBoard(list, key).slice(0, view);
+  }
+
+  /* =====================================================================
+   * 11. 导出
    * ===================================================================== */
   return {
     CONFIG: CONFIG,
@@ -1439,6 +1611,24 @@
     timeRatio: timeRatio,
     heldType: heldType,
     fitsInField: fitsInField,
+
+    /* —— 排行榜（本机存档） —— */
+    BOARD_LIMIT: BOARD_LIMIT,
+    BOARD_VIEW: BOARD_VIEW,
+    BOARD_KEYS: BOARD_KEYS,
+    BOARD_META: BOARD_META,
+    NAME_MAX: NAME_MAX,
+    DEFAULT_NAME: DEFAULT_NAME,
+    boardMetric: boardMetric,
+    sanitizeName: sanitizeName,
+    displayName: displayName,
+    makeRecord: makeRecord,
+    sortBoard: sortBoard,
+    rankOf: rankOf,
+    pruneRecords: pruneRecords,
+    insertRecord: insertRecord,
+    normalizeBoard: normalizeBoard,
+    boardRows: boardRows,
 
     _seededRng: seededRng,
   };
