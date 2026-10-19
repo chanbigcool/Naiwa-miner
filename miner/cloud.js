@@ -233,9 +233,11 @@
       return Promise.resolve({ ok: false, queued: true, reason: 'noname' });
     }
     if (!available()) {
+      /* 域名对不上（例如绑了自有域名）是**永久**不可用：这些记录排进队列
+       * 也永远发不出去，只会在本机攒一坨废数据。所以不排队，只走本机榜。
+       * 断网那种临时失败在下面的 catch 里排队，两者不能混为一谈。 */
       status = 'disabled';
-      enqueue(row);
-      return Promise.resolve({ ok: false, queued: true, reason: 'disabled' });
+      return Promise.resolve({ ok: false, queued: false, reason: 'origin' });
     }
     return insertOne(row).then(function () {
       status = 'online';
