@@ -339,6 +339,59 @@ test('节奏不锁死：固定节奏点击会扫过各种角度（回归测试�
     '固定节奏下 10 次发射的角度跨度只有 ' + (hi - lo).toFixed(1) + '°，说明摆动被锁死在窄区间里了');
 });
 
+test('收钩交接不甩：归位期单帧转角不超过正常摆动的 1.3 倍', function () {
+  // 旧版把相位按 100% 全程推进，钩子离手 2.5~3.3 秒相位就漂掉大半圈，
+  // 收钩回来要在 0.22 秒里把最多 150° 抢回来 —— 实测单帧 12.4°（正常 1.5°），
+  // 8 倍的瞬时加速就是玩家反馈的"收钩时甩一下"。
+  var s = newGame();
+  L.beginLevel(s);
+  var worst = 0;
+  for (var k = 0; k < 8; k++) {
+    var g = 0;
+    while (s.phase !== 'swinging' && g++ < 6000) { L.step(s, FPS); }
+    for (var w = 0; w < 6 + k * 9; w++) { L.step(s, FPS); }
+    L.shoot(s);
+
+    var guard = 0;
+    while (s.phase !== 'swinging' && guard++ < 900) { L.step(s, FPS); }
+    // 交接后的前 30 帧：这里最容易出现"甩"
+    for (var i = 0; i < 30; i++) {
+      var before = s.angle;
+      L.step(s, FPS);
+      if (Math.abs(s.angle - before) > worst) { worst = Math.abs(s.angle - before); }
+    }
+  }
+
+  var normal = 0, pa = s.angle;
+  for (var j = 0; j < 120; j++) {
+    L.step(s, FPS);
+    if (Math.abs(s.angle - pa) > normal) { normal = Math.abs(s.angle - pa); }
+    pa = s.angle;
+  }
+
+  assert(worst <= normal * 1.3 + 0.05,
+    '交接处单帧转角 ' + worst.toFixed(2) + '°，正常摆动才 ' + normal.toFixed(2) + '°');
+});
+
+test('收钩归位会在合理时间内并回摆动（不会一直追不上）', function () {
+  var s = newGame();
+  L.beginLevel(s);
+  var g = 0;
+  while (s.phase !== 'swinging' && g++ < 6000) { L.step(s, FPS); }
+  for (var i = 0; i < 50; i++) { L.step(s, FPS); }
+  L.shoot(s);
+
+  var guard = 0;
+  while (s.phase !== 'swinging' && guard++ < 900) { L.step(s, FPS); }
+  assert(s.returning === true, '刚收钩时应处于归位过渡中');
+
+  var frames = 0;
+  while (s.returning && frames++ < 600) { L.step(s, FPS); }
+  assert(frames < 600, '归位过渡超过 10 秒，说明限速跟随追不上摆动');
+  assert(Math.abs(s.angle) <= s.cfg.SWING_AMPLITUDE + 1e-6, '归位后角度应落在摆动幅度内');
+});
+
+
 test('摆钟相位只增不减', function () {
   var s = newGame();
   L.beginLevel(s);

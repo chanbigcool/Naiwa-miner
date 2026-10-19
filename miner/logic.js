@@ -77,7 +77,19 @@
     SWING_START_PHASE: Math.PI / 2,  // 起始相位：π/2 时钩子正好从正中起摆
     SWING_TURN_EASE: 0.10,   // 匀速模式两端轻微缓动（0=纯三角波，越大越像钟摆）
     ROPE_IDLE_LEN: 78,       // 待机时绳长（钩子离手多近）
-    RETURN_BLEND: 0.22,      // 收钩归位时，从锁定角度摆回钟摆的过渡时长（秒）
+
+    /* —— 收钩归位：把"发射时锁定的角度"接回正在摆的钟摆 ——
+     * 两个约束，都有测试守着，改动必须同时满足：
+     *   1) 交接处不能"甩"：单帧转角不得超过正常摆动的 1.3 倍；
+     *   2) 相位不能锁死：固定节奏点击也要扫过足够大的角度。
+     * 只满足 1) 最省事的是每发把相位归零 —— 会被锁死（实测命中率 1.1%）；
+     * 只满足 2) 最省事的是相位全程连续推进 —— 旧版就是这么写的，但它意味着
+     * 钩子离手的 2.5~3.3 秒里相位一直在漂，收钩回来时要在 0.22 秒内把最多
+     * 150° 抢回来（约 680°/s，正常摆动才 83°/s，8 倍），那一下就是"甩"。
+     * 这里两头各让一步：离手期间相位只按 PHASE_DRIFT_RATE 推进（变化还在，
+     * 只是慢 10 倍），剩下的角度差交给限速跟随慢慢吃掉。 */
+    RETURN_SPEED: 110,       // 归位跟随的角速度上限（度/秒）。正常摆动峰值 83~125，不会更快
+    PHASE_DRIFT_RATE: 0.10,  // 钩子离手（射出 + 回收）期间摆动相位推进的比例
 
     /* —— 钩子速度 —— */
     SHOOT_SPEED: 900,        // 射出速度（逻辑单位/秒）
@@ -790,9 +802,9 @@
       timeLeft: cfg.LEVEL_TIME,
 
       angle: 0,              // 当前角度（度），右正
-      swingClock: 0,         // 摆钟相位时钟（秒）——只增不减，永不重置，见 step() 里的说明
-      blend: 0,              // >0 表示正在从"发射锁定角度"摆回钟摆
-      returnFrom: 0,         // 摆回的起点角度
+      swingClock: 0,         // 摆钟相位时钟（秒）——只增不减，但钩子离手时按 PHASE_DRIFT_RATE 减速推进
+      returning: false,      // true 表示正在从"发射锁定角度"限速接回钟摆（见 CONFIG.RETURN_SPEED）
+      returnFrom: 0,         // 接回的起点角度
       ropeLen: cfg.ROPE_IDLE_LEN,
       hook: { x: cfg.MINER_X, y: cfg.MINER_Y + cfg.ROPE_IDLE_LEN },
 
@@ -834,7 +846,7 @@
     state.target = 0;
     state.levelStartScore = 0;
     state.timeLeft = cfg.LEVEL_TIME;
-    state.angle = 0; state.swingClock = 0; state.blend = 0; state.returnFrom = 0;
+    state.angle = 0; state.swingClock = 0; state.returning = false; state.returnFrom = 0;
     state.ropeLen = cfg.ROPE_IDLE_LEN;
     state.hook = { x: cfg.MINER_X, y: cfg.MINER_Y + cfg.ROPE_IDLE_LEN };
     state.held = null; state.pullT = 0; state.grabbedThisShot = false; state.escapeAtLen = 0;
@@ -858,7 +870,7 @@
     state.levelStartScore = state.score;
     state.combo = 0;
     state.swingClock = 0;
-    state.blend = 0;
+    state.returning = false;
     applyLevelTuning(state);
     state.angle = swingAngle(state);
     state.ropeLen = cfg.ROPE_IDLE_LEN;
@@ -885,7 +897,7 @@
     state.held = null; state.pullT = 0; state.escapeAtLen = 0;
     state.ropeLen = cfg.ROPE_IDLE_LEN;
     state.swingClock = 0;
-    state.blend = 0;
+    state.returning = false;
     state.angle = swingAngle(state);
     state.hook = hookPos(state);
     state.items = buildItems(state, state.level);
@@ -916,7 +928,7 @@
 
     state.held = null; state.pullT = 0; state.escapeAtLen = 0; state.grabbedThisShot = false;
     state.ropeLen = state.cfg.ROPE_IDLE_LEN;
-    state.blend = 0;
+    state.returning = false;
     state.swingClock = 0;
     state.angle = swingAngle(state);
     state.hook = hookPos(state);
@@ -1188,13 +1200,16 @@
     /* —— 计时 —— */
     state.timeLeft -= dt;
 
-    /* —— 摆钟相位：永远连续推进，绝不重置 ——
-     * 这一行是刻意的，别改成"每发之后归零"。
-     * 如果每发都把摆动归零，钩子就总是从正中重新起摆，于是"固定节奏点击"的玩家
-     * 每次都会落到同一个角度上，被系统性地锁死——点得越稳反而越打不中。
-     * 让相位随绝对时间连续推进，玩家的节奏才会自然扫过全部角度。
-     * （实证：改之前 0.4~0.9 秒节奏的命中率只有 1.1%，改之后见 test-logic.js 的节奏测试） */
-    state.swingClock += dt;
+    /* —— 摆钟相位：只增不减，但钩子离手时减速推进 ——
+     * 不能"每发之后归零"：钩子总从正中重新起摆的话，"固定节奏点击"的玩家
+     * 每次都落到同一角度，被系统性地锁死 —— 点得越稳反而越打不中
+     * （实证：0.4~0.9 秒固定节奏下命中率只有 1.1%，见 test-logic.js 的节奏测试）。
+     * 但也不能像旧版那样全程按 100% 推进：钩子离手要 2.5~3.3 秒，相位会漂掉
+     * 大半圈，收钩时那一下"把角度抢回来"就是玩家说的甩。
+     * 所以离手期间按 PHASE_DRIFT_RATE 推进（保留变化，只是慢一个量级），
+     * 剩下的角度差由 RETURN_SPEED 限速跟随吃掉。 */
+    var swingRate = (state.phase === 'swinging') ? 1 : cfg.PHASE_DRIFT_RATE;
+    state.swingClock += dt * swingRate;
 
     /* —— 会爬的目标：慢速横向巡逻（呼应原版会跑的鼹鼠/老鼠）——
      * 只推进"没被抓住"的：一旦 grabbed，它的位置就由绳子接管了（见 pulling 分支）。
@@ -1213,12 +1228,21 @@
     if (state.phase === 'swinging') {
       var target = swingAngle(state);
 
-      if (state.blend > 0) {
-        // 收钩归位：从"发射时锁定的角度"平滑摆回正在进行的摆动，避免绳子瞬移
-        state.blend = Math.max(0, state.blend - dt);
-        var k = 1 - state.blend / cfg.RETURN_BLEND;
-        k = k * k * (3 - 2 * k);                    // smoothstep
-        state.angle = state.returnFrom + (target - state.returnFrom) * k;
+      /* 收钩归位：不是瞬移，也不是定时硬拉 —— 用"限速跟随"。
+       * 每帧最多把角度推进 RETURN_SPEED·dt：够近就直接并回摆动，还差得远就
+       * 匀速追。好处是无论差多少度，每帧转角都不超过正常摆动的约 1.3 倍，
+       * 玩家的眼睛看到的是一次"回摆"，而不是抽一下。
+       * （旧版是 0.22 秒内硬拉，差 150° 时角速度约 680°/s、正常才 83°/s，
+       *   8 倍的瞬时加速就是"甩"的来源。） */
+      if (state.returning) {
+        var gap = target - state.angle;
+        var step = cfg.RETURN_SPEED * dt;
+        if (Math.abs(gap) <= step) {
+          state.angle = target;
+          state.returning = false;
+        } else {
+          state.angle += (gap > 0 ? step : -step);
+        }
       } else {
         state.angle = target;
       }
@@ -1303,9 +1327,9 @@
         state.hook = hookPos(state);
         state.boomBoost = false;
         settle(state, ev);
-        // 从当前锁定角度摆回钟摆（而不是把钟摆归零）
+        // 从当前锁定角度限速接回钟摆（而不是把钟摆归零）
         state.returnFrom = state.angle;
-        state.blend = cfg.RETURN_BLEND;
+        state.returning = true;
         state.phase = 'swinging';
       }
     }
