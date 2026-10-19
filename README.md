@@ -328,7 +328,8 @@ miner/
   test-logic.js         Node 逻辑测试
 _qa/                    数值验证工具
   driver.mjs            无头 Chrome 端到端流程验收
-  board.mjs             排行榜验收：空榜 / 三榜排序 / 留名 / 改名 / 刷新持久化 / 头像
+  board.mjs             排行榜验收（**只验证本机榜**）：空榜 / 三榜排序 / 留名 /
+                        改名 / 刷新持久化 / 头像
   cloudui.mjs           云端接线验收（假云端）：全服榜渲染 / 起名补传 / 结算名次
   cloudprobe.mjs        真实云库预检：发布域名上跑 insert + select，确认 UPDATE 被拒
   crossdevice.mjs       跨设备可见性诊断：两套独立配置，验证 A 的成绩 B 看不见
@@ -386,6 +387,8 @@ node _qa/driver.mjs "http://127.0.0.1:8137/miner/" "_qa/shots"
 node _qa/driver.mjs "file:///绝对路径/miner/index.html" "_qa/screens-file"
 
 # 排行榜（需要 http://，file:// 下 localStorage 会被浏览器拦掉）
+# 注意：board.mjs 往 localStorage 塞假数据来验证本机榜，必须在云端不可用的地址上跑
+# （本机 http 服务器）。发布域名上榜单读的是全服数据，脚本会直接拒绝执行。
 node _qa/board.mjs "http://127.0.0.1:8137/miner/" "_qa/shots-board"
 
 # 横屏：入口、榜单、结算卡有没有溢出

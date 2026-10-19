@@ -144,6 +144,18 @@ try {
   await send('Page.navigate', { url: TARGET });
   await waitReady();
 
+  /* 这个脚本验证的是**本机榜**：它往 localStorage 塞假数据，再看榜怎么排。
+   * 在能连上云端的地址（发布域名）上，榜单读的是全服数据，这些断言必然全错——
+   * 那不是功能坏了，是跑错了地方。先确认，不是就立刻停。 */
+  const cloudOn = await evaluate('!!(window.MinerCloud && window.MinerCloud.available())');
+  if (cloudOn) {
+    console.error('\n这个地址连得上云端，排行榜显示的是全服数据。');
+    console.error('board.mjs 验证的是本机榜，请在云端不可用的地址上跑：');
+    console.error('  http://127.0.0.1:8137/miner/');
+    console.error('云端的验收用 _qa/cloudui.mjs（假后端）和 _qa/cloudprobe.mjs（真库）。');
+    process.exit(3);
+  }
+
   /* ---------- 1. 空榜 ---------- */
   await evaluate('localStorage.clear(); location.reload();');
   await waitReady();
