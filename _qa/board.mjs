@@ -198,11 +198,16 @@ try {
     await sleep(200);
     return evaluate(`(() => {
       const r = document.querySelector('#boardList .bl-row');
-      return { name: r.querySelector('.bl-who b').textContent, val: r.querySelector('.bl-val').textContent };
+      return { name: r.querySelector('.bl-who b').textContent,
+               sub: r.querySelector('.bl-who small').textContent,
+               val: r.querySelector('.bl-val').textContent };
     })()`);
   };
   report.scoreTop = await firstBy('score');
   need(report.scoreTop.name === '老王' && report.scoreTop.val.indexOf('9,100') === 0, '总分榜第一不对');
+  /* 行里必须带难度倍率：不标的话，同一行 27,300 分看着像算错了 */
+  need(report.scoreTop.sub.indexOf('标准×2') === 0,
+    '榜单行没标难度倍率：' + report.scoreTop.sub);
   await shot('02-board-score.png');
 
   /* 头像：每行一张、真的加载出来、同名同脸 */
@@ -405,7 +410,9 @@ try {
     const r = document.querySelector('#boardList .bl-row');
     return { name: r.querySelector('.bl-who b').textContent, val: r.querySelector('.bl-val').textContent };
   })()`);
-  need(report.persistedRow.name === '小王' && report.persistedRow.val.indexOf('3,000') === 0, '刷新后榜单内容不对');
+  /* 局内 3000、标准 ×2 → 榜上 6,000。刷新之后不许变（读档再乘就露馅了）。 */
+  need(report.persistedRow.name === '小王' && report.persistedRow.val.indexOf('6,000') === 0,
+    '刷新后榜单内容不对：' + report.persistedRow.val);
 
   /* 刷新一次就换脸的话，玩家会以为榜被别人顶了 */
   report.avaAfterReload = await evaluate(`(() => {
@@ -452,7 +459,10 @@ try {
   })()`);
   need(report.pauseShown, '暂停浮层没弹出来');
   need(report.quitRecord.quit === 1, '中途退出应该留一条 outcome=quit 的记录');
-  need(report.quitRecord.score === 4321, '退出局的分没记对');
+  /* 局内 4321 分、标准档 ×2 → 榜上必须是 8642。
+   * 这条同时守住两件事：退出局也要换算；而且只乘一次。 */
+  need(report.quitRecord.score === 8642,
+    '退出局没按难度换算（标准 ×2 应为 8642）：' + report.quitRecord.score);
   need(report.quitRecord.onStart, '退出应该回到开始页');
   await shot('11-start-after-quit.png');
 

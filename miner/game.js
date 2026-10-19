@@ -28,6 +28,7 @@
 
   var el = {
     score: document.getElementById('hudScore'),
+    scoreUnit: document.getElementById('hudScoreUnit'),
     target: document.getElementById('hudTarget'),
     level: document.getElementById('hudLevel'),
     time: document.getElementById('hudTime'),
@@ -267,7 +268,11 @@
   }
 
   /* 一局结束记一条。成绩为 0 的空局不占榜位 ——
-   * 否则开局就点"重开"会白白吃掉一格。 */
+   * 否则开局就点"重开"会白白吃掉一格。
+   *
+   * **只在这里换算结算分**：局内分是钱（门槛、小卖部都按它走），
+   * 一旦写进榜就换成"局内分 × 难度倍率"，全服一张榜才比得公平。
+   * 换算只发生一次 —— 记录里存的就是结算分，读档不会再乘一遍。 */
   function recordRun(outcome) {
     if (!game) { return null; }
     if (game.score <= 0 && game.comboBest <= 0) { return null; }
@@ -276,10 +281,10 @@
     var rec = L.makeRecord({
       id: now.toString(36) + '-' + (++recordSeq).toString(36),
       name: myName || L.DEFAULT_NAME,
-      score: game.score,
+      score: L.finalScore(game.score, game.preset),
       level: game.level,
       comboBest: game.comboBest,
-      preset: preset,
+      preset: game.preset,
       ts: now,
       named: !!myName,
       avatar: ensureAvatar(),
@@ -1021,7 +1026,10 @@
   function commitBest() {
     if (!game) { return false; }
     var changed = false;
-    if (game.score > best.score) { best.score = game.score; saveNum(BEST_KEY, best.score); changed = true; }
+    /* 最高分跟榜上的口径一致，存**结算分**。存局内分的话，
+     * 一次硬核局会把"最高分"压得比榜上低，同一屏两套数字。 */
+    var runScore = L.finalScore(game.score, game.preset);
+    if (runScore > best.score) { best.score = runScore; saveNum(BEST_KEY, best.score); changed = true; }
     if (game.level > best.level) { best.level = game.level; saveNum(LV_KEY, best.level); changed = true; }
     return changed;
   }
@@ -1104,9 +1112,16 @@
     for (var i = 0; i < rows.length; i++) {
       var r = rows[i];
       var cls = 'bl-row' + (i < 3 ? ' p' + (i + 1) : '') + (isMineRow(r) ? ' me' : '');
-      var sub = '第 ' + r.level + ' 关 · 连击 ' + r.comboBest +
+      /* 行里必须标出难度：排行榜是全服一张榜，27,300 分可能是硬核 ×3 打出来的，
+       * 也可能是轻松 ×1 打出来的 —— 不标倍率，玩家会以为榜在乱算。
+       * 总分榜再挂一个 title，写明"局内分 × 倍率"的原始账。 */
+      var mult = L.diffFactor(r.preset);
+      var sub = L.diffLabel(r.preset) + '×' + mult + ' · 第 ' + r.level + ' 关 · 连击 ' + r.comboBest +
         (r.outcome === 'quit' ? ' · 中途退出' : '') + ' · ' + dateLabel(r.ts);
-      html += '<li class="' + cls + '">' +
+      var tip = boardKey === 'score' && mult > 1
+        ? '局内 ' + fmt(L.rawScoreOf(r)) + ' 分 × ' + mult + ' = ' + fmt(r.score) + ' 结算分'
+        : '';
+      html += '<li class="' + cls + '"' + (tip ? ' title="' + esc(tip) + '"' : '') + '>' +
         '<span class="bl-rank">' + (i + 1) + '</span>' +
         avatarHTML(r.avatar, 'bl-ava') +
         '<span class="bl-who"><b>' + esc(r.name || L.DEFAULT_NAME) + '</b>' +
@@ -1220,12 +1235,12 @@
     el.clearTitle.textContent = e.cashedOut ? '收工！' : '过关！';
     el.clearSub.innerHTML = e.cashedOut
       ? '第 <b>' + e.level + '</b> 关提前收工，还剩 <b>' + Math.ceil(e.timeLeft) +
-        '</b> 秒。这一关赚了 <b>' + e.levelGain + '</b> 分，总分 <b>' + e.score + '</b>。'
+        '</b> 秒。这一关赚了 <b>' + e.levelGain + '</b> 分，局内分 <b>' + e.score + '</b>。'
       : '第 <b>' + e.level + '</b> 关达标。这一关赚了 <b>' + e.levelGain +
-        '</b> 分，总分 <b>' + e.score + '</b>。';
+        '</b> 分，局内分 <b>' + e.score + '</b>。';
     var rows = [
       { label: '本关收入', value: e.levelGain, kind: 'good' },
-      { label: '总分', value: e.score },
+      { label: '局内分', value: e.score },
     ];
     if (e.cashedOut) { rows.push({ label: '省下的时间', value: Math.ceil(e.timeLeft) + ' 秒' }); }
     rows.push(
@@ -1245,16 +1260,23 @@
      *
      * "新纪录"必须在插入之前判断：插进去之后，第一名就是这一局了，
      * 拿它跟榜比永远成立。 */
+    /* "新纪录"比的必须是**结算分** —— 榜上存的是结算分，
+     * 拿局内分去比，硬核局会永远差一截，白白丢掉"新纪录"提示。 */
     var prevBest = recordBest().score;
-    var isBest = game.score > prevBest;
+    var runScore = L.finalScore(game.score, game.preset);
+    var isBest = runScore > prevBest;
     recordRun('fail');
     lastRunBest = isBest;
     commitBest();
     el.overSub.innerHTML = '第 <b>' + e.level + '</b> 关卡住了：门槛 <b>' + e.target +
       '</b> 分，你差了 <b>' + (e.target - e.score) + '</b> 分。';
     paintOverBoard();
+    /* 结算卡把账摊开写：局内分、倍率、结算分三行并排，
+     * 玩家一眼能算出"为什么我这个分能排这儿"，不用猜榜是不是算错了。 */
     tally(el.overTally, [
-      { label: '总分', value: e.score },
+      { label: '局内分', value: fmt(e.score) },
+      { label: '难度', value: L.diffLabel(game.preset) + ' ×' + L.diffFactor(game.preset) },
+      { label: '结算分', value: fmt(runScore), kind: 'good' },
       { label: '最远关卡', value: '第 ' + e.level + ' 关' },
       { label: '最高连击', value: e.comboBest },
       { label: '撞到炸弹', value: e.angels, kind: e.angels > 0 ? 'bad' : '' },
@@ -1263,7 +1285,7 @@
     ]);
     var rb = recordBest();
     /* "新纪录"只在上面的上榜区说一次就够了 —— 同一屏喊两遍显得吵。 */
-    el.overBest.innerHTML = '最高分 <b>' + rb.score + '</b> · 最远到第 <b>' + rb.level + '</b> 关';
+    el.overBest.innerHTML = '最高结算分 <b>' + fmt(rb.score) + '</b> · 最远到第 <b>' + rb.level + '</b> 关';
     show(el.ovOver);
   }
 
@@ -1375,6 +1397,12 @@
     flash = 0;
     lastT = 0;
     cacheFor(game.cfg);
+    /* HUD 上这个数一直是**局内分**（它是钱，门槛和小卖部都按它走），
+     * 但把倍率写在旁边，玩家才不会以为结算时会凭空多乘一次。 */
+    if (el.scoreUnit) {
+      var mult = L.diffFactor(preset);
+      el.scoreUnit.textContent = mult > 1 ? '分数 ×' + mult : '分数';
+    }
     syncHud();
     refreshSwingNote();
   }

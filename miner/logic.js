@@ -305,6 +305,51 @@
   };
 
   /* =====================================================================
+   * 1.5 难度倍率 —— 排行榜的"统一换算"
+   *
+   * 三档手感（轻松 / 标准 / 硬核）用的**不是同一把尺子**：硬核第 1 关就少
+   * 10 秒、摆动更快、目标更高，同样的技术打出来的局内分必然更低。
+   * 要是直接把局内分摆在一张榜上比，没人会去碰硬核 —— 那不是难度选择，
+   * 那是劝人别选。
+   *
+   * 所以规则只有一条：**结算分 = 局内分 × 倍率**，排行榜一律按结算分排。
+   *   · 倍率只乘「总分」。关卡、连击是实打实的计数（打到第几关、连了几下），
+   *     乘了就会变成看不懂的数字，所以那两个榜照实记，只在行里标出难度。
+   *   · 倍率是**开局时那一档**决定的，中途不能换档；记录里跟着 preset 走，
+   *     以后读档、别人看榜，都能重算出同一份结算分。
+   *   · 只乘一次。局内分是钱（门槛、小卖部都按它算），只有"成一局记录"
+   *     的那一刻才换算（见 game.js 的 recordRun）。逻辑层不碰 state.score。
+   * ===================================================================== */
+  var DIFF_ORDER = ['relaxed', 'standard', 'hard'];
+  var DIFF = {
+    relaxed:  { label: '轻松', factor: 1 },
+    standard: { label: '标准', factor: 2 },
+    hard:     { label: '硬核', factor: 3 },
+  };
+
+  /* 归档：缺省/脏值一律当标准档 —— 跟 makeRecord 的兜底保持一致，
+   * 否则"读档算出来的倍率"和"记录里的倍率"会对不上。 */
+  function normPreset(p) {
+    return (p === 'relaxed' || p === 'hard') ? p : 'standard';
+  }
+  function diffFactor(p) { return DIFF[normPreset(p)].factor; }
+  function diffLabel(p) { return DIFF[normPreset(p)].label; }
+
+  /* 局内分 → 结算分。四舍五入到整数：榜上不该出现小数点。 */
+  function finalScore(raw, preset) {
+    return Math.round(intIn(raw, 0, 1000000000) * diffFactor(preset));
+  }
+
+  /* 结算分 → 局内分。反推是**精确**的：结算分本来就是整数局内分乘以整数倍率，
+   * 所以这里不做任何近似，只是把倍率除回去（用于榜上标"原 x 分"）。 */
+  function rawScoreOf(rec) {
+    if (!rec) { return 0; }
+    var f = diffFactor(rec.preset);
+    var s = intIn(rec.score, 0, 1000000000);
+    return f > 1 ? Math.round(s / f) : s;
+  }
+
+  /* =====================================================================
    * 2. 物品表（11 张立绘 + 1 个程序绘制的石堆）
    *
    * —— 体型就是价值刻度（这是刻意的，也是需求）——
@@ -1505,7 +1550,7 @@
       score: intIn(input.score, 0, 1000000000),
       level: intIn(input.level, 1, 999),
       comboBest: intIn(comboRaw, 0, 9999),
-      preset: (input.preset === 'relaxed' || input.preset === 'hard') ? input.preset : 'standard',
+      preset: normPreset(input.preset),
       ts: intIn(input.ts, 0, 4102444800000),          // 上限 2100-01-01，挡住离谱时间戳
       named: !!input.named,
       outcome: input.outcome === 'quit' ? 'quit' : 'fail',
@@ -1712,6 +1757,14 @@
     fitsInField: fitsInField,
 
     /* —— 排行榜（本机存档） —— */
+    DIFF_ORDER: DIFF_ORDER,
+    DIFF: DIFF,
+    normPreset: normPreset,
+    diffFactor: diffFactor,
+    diffLabel: diffLabel,
+    finalScore: finalScore,
+    rawScoreOf: rawScoreOf,
+
     BOARD_LIMIT: BOARD_LIMIT,
     BOARD_VIEW: BOARD_VIEW,
     BOARD_KEYS: BOARD_KEYS,

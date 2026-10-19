@@ -215,6 +215,10 @@ async function main() {
   need(report.settle.over, '结算面板没弹出来');
   need(report.settle.submitted.length === 1, '应该提交一条：' + JSON.stringify(report.settle.submitted));
   need(report.settle.submitted[0].name === '阿包', '提交的名字不对：' + report.settle.submitted[0].name);
+  /* 局内 15000、标准 ×2 → 全服榜上必须是 30000。
+   * 云端只存"结算分"，倍率在写记录那一刻就算完了，读的人不用再乘。 */
+  need(report.settle.submitted[0].score === 30000,
+    '提交的应该是结算分（15000 × 2 = 30000）：' + report.settle.submitted[0].score);
   need(/全服/.test(report.settle.rank), '结算卡名次没走云端：' + report.settle.rank);
   await shot('02-over-cloud.png');
 

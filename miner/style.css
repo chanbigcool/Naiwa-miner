@@ -328,6 +328,16 @@ body {
   background: linear-gradient(135deg, #ff8a5b, var(--brand) 55%, var(--brand-dark));
   box-shadow: 0 6px 14px rgba(225, 75, 75, .3);
 }
+/* 倍率就写在档位上：选难度之前先知道这一档值多少分，
+  免得打完一局才发现"原来硬核是 ×3"。 */
+.preset button b {
+  font-size: .92em; font-weight: 800; margin-left: .14em; opacity: .74;
+}
+.preset button.on b { opacity: .92; }
+.preset-note {
+  margin: -.42em 0 .7em; font-size: .68em; line-height: 1.55;
+  color: var(--ink-soft); text-align: center;
+}
 
 /* 按钮 */
 .btn {
@@ -565,6 +575,12 @@ body {
 }
 
 .board-list { list-style: none; margin: 0 0 .7em; padding: 0; display: grid; gap: .28em; text-align: left; }
+/* 一句话讲清这张榜比的是什么。倍数规则不写在这儿，
+   玩家看到同一行 27,300 却不知道为什么，第一反应是"算错了"。 */
+.board-note {
+  margin: -.15em 0 .55em; font-size: .65em; line-height: 1.55; color: var(--ink-soft);
+}
+.board-note b { color: var(--gold-dark); }
 .bl-row {
   display: flex; align-items: center; gap: .42em;
   padding: .34em .5em; border-radius: .55em;

@@ -1751,6 +1751,72 @@ test('排行榜 · 存档读回要做体检：垃圾、重复 id、空记录都�
   eq(L.normalizeBoard([]).length, 0);
 });
 
+/* ---------------- 难度倍率 ----------------
+ * 排行榜是全服一张榜。硬核档局内分天然更低（少 10 秒、摆得快、目标高），
+ * 不换算就没有人愿意选硬核 —— 所以结算分 = 局内分 × 倍率。
+ */
+test('难度倍率 · 三档对应 1/2/3，脏值一律当标准档', function () {
+  eq(L.diffFactor('relaxed'), 1);
+  eq(L.diffFactor('standard'), 2);
+  eq(L.diffFactor('hard'), 3);
+  eq(L.diffFactor(undefined), 2, '缺省是标准档，跟 makeRecord 的兜底必须一致');
+  eq(L.diffFactor('nightmare'), 2, '不认识的档位不能算出 undefined 或 NaN');
+  eq(L.diffFactor(null), 2);
+  eq(L.diffLabel('hard'), '硬核');
+  eq(L.normPreset('relaxed'), 'relaxed');
+  eq(L.normPreset('x'), 'standard');
+  eq(L.DIFF_ORDER.join(','), 'relaxed,standard,hard', '难度从易到难，顺序就是倍率顺序');
+  eq(L.DIFF_ORDER.map(L.diffFactor).join(','), '1,2,3', '倍率必须与难度同步递增');
+});
+
+test('难度倍率 · 结算分 = 局内分 × 倍率，且能精确反推', function () {
+  eq(L.finalScore(1234, 'relaxed'), 1234);
+  eq(L.finalScore(1234, 'standard'), 2468);
+  eq(L.finalScore(1234, 'hard'), 3702);
+  eq(L.finalScore(0, 'hard'), 0, '空局还是 0，不能因为倍率变成"有成绩"');
+  eq(L.finalScore('abc', 'standard'), 0, '垃圾输入不能算出 NaN —— 那会让整张榜排不了序');
+  eq(L.rawScoreOf({ score: 3702, preset: 'hard' }), 1234, '榜上要标"原局内分"，必须反推得回原值');
+  eq(L.rawScoreOf({ score: 2468, preset: 'standard' }), 1234);
+  eq(L.rawScoreOf({ score: 1234, preset: 'relaxed' }), 1234);
+  eq(L.rawScoreOf({ score: 3000, preset: 'hard' }), 1000);
+  eq(L.rawScoreOf(null), 0, '空记录不能抛异常');
+});
+
+test('难度倍率 · 同一张榜上，硬核的低局内分可以压过轻松的更高局内分', function () {
+  var hard = rec({ id: 'h', i: 1, score: L.finalScore(1000, 'hard'), preset: 'hard' });
+  var easy = rec({ id: 'e', i: 2, score: L.finalScore(1400, 'relaxed'), preset: 'relaxed' });
+  eq(hard.score, 3000, '硬核 1000 局内分 → 3000 结算分');
+  eq(easy.score, 1400, '轻松 1400 局内分 → 1400 结算分');
+  var sorted = L.sortBoard([easy, hard], 'score');
+  eq(sorted[0].id, 'h', '倍率没生效的话，硬核玩家永远排在后面，没人会再选硬核');
+  eq(L.rankOf([easy, hard], 'h', 'score'), 1);
+});
+
+test('难度倍率 · 只乘总分：关卡 / 连击榜仍是实打实的计数', function () {
+  var deep = rec({ id: 'deep', i: 1, score: 10, level: 9, combo: 3, preset: 'relaxed' });
+  var quick = rec({ id: 'quick', i: 2, score: 99999, level: 4, combo: 2, preset: 'hard' });
+  eq(L.boardMetric(deep, 'level'), 9, '关卡不该被乘成 27 —— 榜上写"第 27 关"没人看得懂');
+  eq(L.sortBoard([quick, deep], 'level')[0].id, 'deep', '关卡榜按实际关卡排，不按倍率');
+  eq(L.sortBoard([quick, deep], 'combo')[0].id, 'deep', '连击榜同理');
+  eq(L.boardMetric(quick, 'score'), 99999, '总分榜用的就是结算分，读出来不该再乘一次');
+});
+
+test('难度倍率 · 倍率跟着记录自己的档位走：读档、跨设备都不改口径', function () {
+  var raw = [
+    { id: 'a', name: '甲', score: L.finalScore(800, 'hard'), level: 3, preset: 'hard', ts: 10 },
+    { id: 'b', name: '乙', score: L.finalScore(800, 'relaxed'), level: 3, preset: 'relaxed', ts: 11 },
+  ];
+  var out = L.normalizeBoard(raw, 40);
+  var a = out.filter(function (r) { return r.id === 'a'; })[0];
+  var b = out.filter(function (r) { return r.id === 'b'; })[0];
+  eq(a.score, 2400, '读回来还是结算分，不能再乘一遍');
+  eq(L.rawScoreOf(a), 800);
+  eq(b.score, 800);
+  eq(L.rawScoreOf(b), 800);
+  eq(L.makeRecord(raw[0]).preset, 'hard', '档位要跟着记录落盘，否则以后算不出这次是怎么打的');
+  eq(L.makeRecord({ score: 500, preset: 'nope' }).preset, 'standard');
+});
+
 /* ---------------- 头像 ---------------- */
 test('排行榜 · 头像池只用有立绘的奶蛙：石头和炸弹不进池', function () {
   eq(L.AVATARS.length, 10, '十只可以当头像的奶蛙');

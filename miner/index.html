@@ -21,7 +21,7 @@
         <!-- 顶部 HUD（不吃点击） -->
         <div class="hud" id="hud" aria-hidden="true">
           <div class="hud-row">
-            <span class="stat"><b id="hudScore">0</b><small>分数</small></span>
+            <span class="stat"><b id="hudScore">0</b><small id="hudScoreUnit">分数</small></span>
             <span class="stat"><b id="hudTarget">0</b><small>目标</small></span>
             <span class="stat"><b id="hudLevel">1</b><small>关卡</small></span>
             <span class="stat time"><b id="hudTime">60</b><small>秒</small></span>
@@ -78,11 +78,12 @@
             <div class="legend" id="legend"></div>
 
             <div class="preset" id="preset">
-              <span class="preset-label">手感</span>
-              <button type="button" data-preset="relaxed">轻松</button>
-              <button type="button" data-preset="standard" class="on">标准</button>
-              <button type="button" data-preset="hard">硬核</button>
+              <span class="preset-label">难度</span>
+              <button type="button" data-preset="relaxed">轻松<b>×1</b></button>
+              <button type="button" data-preset="standard" class="on">标准<b>×2</b></button>
+              <button type="button" data-preset="hard">硬核<b>×3</b></button>
             </div>
+            <p class="preset-note">结算分 = 局内分 × 难度倍率 · 排行榜按结算分排（关卡、连击不乘）</p>
             <p class="swing-note" id="swingNote"></p>
 
             <button class="btn primary big" id="btnStart" type="button">开始挖矿</button>
@@ -93,7 +94,7 @@
               <b>达标之后按 Enter 可以收工</b>提前过关 —— 也可以接着挖，多赚的分就是小卖部的钱。<br>
               每关都会配发炸药，过关后可以去<b>小卖部</b>把赚到的分换成下一关的道具。
             </p>
-            <p class="ov-best">最高 <b id="bestScore">0</b> 分 · 最远到第 <b id="bestLevel">1</b> 关</p>
+            <p class="ov-best">最高结算分 <b id="bestScore">0</b> 分 · 最远到第 <b id="bestLevel">1</b> 关</p>
 
             <button class="lb-entry" id="btnOpenBoard" type="button">
               <span class="lbe-badge" aria-hidden="true">
@@ -182,6 +183,7 @@
               <button type="button" data-board="level" role="tab">关卡</button>
               <button type="button" data-board="combo" role="tab">连击</button>
             </div>
+            <p class="board-note">总分榜比的是<b>结算分</b>：局内分 × 难度倍率（轻松 1 / 标准 2 / 硬核 3）。</p>
 
             <ol class="board-list" id="boardList"></ol>
             <p class="board-empty" id="boardEmpty">榜上还是空的 —— 打完一局就会有一条。</p>
