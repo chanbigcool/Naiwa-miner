@@ -2,16 +2,16 @@
 
 ## 在线试玩
 
-> **<https://naiwa-mini-games.app.workbuddy.host/miner/>**
+> **<https://chanbigcool.github.io/Naiwa-miner/miner/>**
 >
-> 手机与电脑均适配，点开即玩，无需安装。合集入口页：<https://naiwa-mini-games.app.workbuddy.host/>
+> 手机与电脑均适配，点开即玩，无需安装。合集入口页：<https://chanbigcool.github.io/Naiwa-miner/>
+>
+> 备用镜像：<https://naiwa-mini-games.app.workbuddy.host/miner/>（手动发布的目录快照，可能滞后于仓库，以上面那条为准）
 
 用「奶蛙」形象重制的黄金矿工（Gold Miner）。原生 HTML / CSS / JavaScript 实现，
 无依赖、无构建步骤，`file://` 直接打开即可离线运行。
 
 仓库：<https://github.com/chanbigcool/Naiwa-miner>
-
-GitHub Pages 镜像（由 `gh-pages` 分支发布）：<https://chanbigcool.github.io/Naiwa-miner/miner/>
 
 > 本仓库当前只包含这一款游戏。根目录 `index.html` 为合集入口页，矿工本体位于 `miner/`。
 
@@ -32,22 +32,24 @@ python3 -m http.server 8000
 
 ### 在线部署
 
-线上版本托管在两条通道上：主链接是 `naiwa-mini-games.app.workbuddy.host`（由本仓库根目录整份发布，
-首页是合集入口页，游戏在 `/miner/`）；另一条是 GitHub Pages 镜像。
+线上版本有两条通道，**以 GitHub Pages 为准**：
 
-GitHub Pages 的发布分支为 `gh-pages`，站点根目录即仓库根目录。
+- **GitHub Pages（主）**：<https://chanbigcool.github.io/Naiwa-miner/miner/>。发布分支为 `gh-pages`，
+  站点根目录即仓库根目录。`sync-pages.yml` 在每次推送到 `main` 后把 `main` 镜像到 `gh-pages`，
+  两条分支不会漂移，所以**推完代码线上就自动更新**。
+- **WorkBuddy 托管（备用）**：<https://naiwa-mini-games.app.workbuddy.host/miner/>。是本仓库根目录
+  整份发布的手动快照，**不会随 git 推送变化**，改完代码需要重新发布一次。
+
+站点启用只需在 `Settings → Pages` 里选一次源（`Deploy from a branch` / `gh-pages` / `/ (root)`）。
+注意：**推送 `gh-pages` 分支本身不会自动开通站点**，这一步必须在设置页做一次。
+
 全部资源使用相对路径，因此放在 `/<仓库名>/` 子路径下无需改动任何代码。
-
-发布分支与开发分支分开，是为了免去在仓库设置页里手动指定发布源：
-向仓库推送一个 `gh-pages` 分支即会自动开通 Pages 站点。
-`.github/workflows/sync-pages.yml` 会在每次推送到 `main` 之后把 `main` 镜像到 `gh-pages`，
-两者不会漂移；若 Actions 不可用，手动同步等价于：
+根目录的 `.nojekyll` 用于关闭 Jekyll 处理，避免以下划线开头的目录被忽略。
+若 Actions 不可用，手动同步等价于：
 
 ```bash
 git push --force origin main:gh-pages
 ```
-
-根目录的 `.nojekyll` 用于关闭 Jekyll 处理，避免以下划线开头的目录被忽略。
 
 ## 玩法
 
