@@ -27,3 +27,6 @@ desktop.ini
 # 本项目零依赖、零构建；下面两行纯属防御，避免哪天误装东西进来
 node_modules/
 package-lock.json
+
+# ===== 探针输出 =====
+_qa/*-report.json

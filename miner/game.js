@@ -81,6 +81,7 @@
     ovBoard: document.getElementById('ovBoard'),
     btnOpenBoard: document.getElementById('btnOpenBoard'),
     lbMeta: document.getElementById('lbMeta'),
+    boardSub: document.getElementById('boardSub'),
     boardNameInput: document.getElementById('boardNameInput'),
     boardNameNote: document.getElementById('boardNameNote'),
     boardAva: document.getElementById('boardAva'),
@@ -223,10 +224,20 @@
   var myName = loadName();
   var myAvatar = loadAvatar();
   var recordSeq = 0;
-  var lastRecordId = '';        // 最近一局那条（榜上找不到就是没挤进去）
+  var lastRecordId = '';        // 最近一局那条（本机榜上找不到就是没挤进去）
+  var lastRec = null;           // 最近一局那条记录本身（云端榜不按本机榜裁，得单独留）
   var lastRunBest = false;      // 这一局是不是刷新了最高分
   var boardKey = 'score';       // 当前看的是哪个榜
   var boardBack = null;         // 从哪儿打开排行榜的，关掉要还回去
+
+  /* ---------- 云端榜（可选的一层） ----------
+   * CLOUD 为 null（cloud.js 没加载）或 available() 为 false（域名不对）
+   * 时，整个游戏与以前完全一样，只是看本机榜 —— 这层不允许影响主流程。 */
+  var CLOUD = window.MinerCloud || null;
+  var cloudState = 'disabled';  // idle | online | offline | disabled
+  var cloudRows = { score: [], level: [], combo: [] };
+  var cloudCount = 0;
+  function cloudOn() { return cloudState === 'online'; }
 
   function fmt(n) {
     return String(Math.floor(n || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -278,7 +289,17 @@
     saveBoard();
     // 弱成绩可能一进去就被裁掉，只有真在榜上才算"我的这一条"
     lastRecordId = L.rankOf(board, rec.id, 'score') > 0 ? rec.id : '';
+    lastRec = rec;
     refreshLbMeta();
+
+    /* 云端那一份照传，但**不改变本机记录的去留**：
+     * 本机榜仍然是离线时的兜底，云端只是让别的玩家看得见。
+     * 没名字时 submit 会把这条压进队列，等 setName 之后补传。 */
+    if (CLOUD) {
+      CLOUD.submit(rec, myName).then(function (res) {
+        if (res && res.ok) { refreshCloud(); }
+      });
+    }
     return rec;
   }
 
@@ -316,11 +337,27 @@
     }
     if (patched.length) { saveBoard(); }
     refreshLbMeta();
+
+    /* 起了名，之前攒着的成绩才终于能上榜 —— 名字是上榜的门票。
+     * 云端是"只增不改"的，所以改名不会追溯已经传上去的旧记录，
+     * 那些记录留的是当时的名字，这在公共榜上是诚实的做法。 */
+    if (CLOUD) {
+      CLOUD.flush(myName).then(function (n) {
+        if (n > 0) { refreshCloud(); }
+      });
+    }
     return true;
   }
 
   function refreshLbMeta() {
     if (!el.lbMeta) { return; }
+    /* 联网时以**全服**为准：开始页那行小字是玩家看到的第一条榜单信息，
+     * 写着"共 8 条"而榜里其实是全服前八，会显得这个游戏很冷清。 */
+    if (cloudOn() && cloudRows.score.length) {
+      var ct = L.sortBoard(cloudRows.score, 'score')[0];
+      el.lbMeta.textContent = '全服 ' + fmt(cloudCount) + ' 条 · 第一 ' + ct.name + ' ' + fmt(ct.score);
+      return;
+    }
     if (!board.length) { el.lbMeta.textContent = '还没有记录'; return; }
     var top = L.sortBoard(board, 'score')[0];
     el.lbMeta.textContent = '共 ' + board.length + ' 条 · 第一 ' + top.name + ' ' + fmt(top.score) + ' 分';
@@ -997,14 +1034,69 @@
     });
   }
 
+  /* 榜上展示哪一份：能连上就看全服，连不上看本机。
+   * 两边行结构一样（name/avatar/score/level/comboBest/ts），所以渲染只有一份。 */
+  function boardRowsFor(key) {
+    if (cloudOn() && cloudRows[key] && cloudRows[key].length) {
+      return L.boardRows(cloudRows[key], key, L.BOARD_VIEW);
+    }
+    return L.boardRows(board, key, L.BOARD_VIEW);
+  }
+  function isMineRow(r) {
+    /* 本机榜按"最近一局"标，全服榜按设备指纹标 —— 全服榜里你可能有好多条 */
+    if (cloudOn()) { return !!r.clientId && r.clientId === CLOUD.clientId(); }
+    return r.id === lastRecordId;
+  }
+
+  function paintBoardSub() {
+    if (el.boardSub) {
+      el.boardSub.textContent = cloudOn()
+        ? '全服榜 · 共 ' + fmt(cloudCount) + ' 条 · 不登录也能上榜'
+        : (cloudState === 'offline'
+          ? '连不上云服务 · 先看这台设备的成绩'
+          : '这台设备上的成绩 · 一局记一条 · 头像随机分配');
+    }
+    if (el.boardEmpty) {
+      el.boardEmpty.textContent = cloudOn()
+        ? '全服榜还是空的 —— 打完一局，你就是第一个。'
+        : '榜上还是空的 —— 打完一局就会有一条。';
+    }
+  }
+
+  /* 拉一次全服榜。失败不抛给上层：把 cloudState 置成 offline，
+   * 所有渲染自然退回本机榜，玩家顶多看到一行"连不上云服务"。 */
+  function refreshCloud() {
+    if (!CLOUD || !CLOUD.available()) {
+      cloudState = 'disabled';
+      paintBoardSub();
+      return Promise.resolve(false);
+    }
+    return CLOUD.load(50).then(function (res) {
+      cloudRows = res.rows;
+      cloudCount = res.count;
+      cloudState = 'online';
+      paintBoardSub();
+      refreshLbMeta();
+      if (el.ovBoard && ovShown(el.ovBoard)) { renderBoard(); }
+      if (el.ovOver && ovShown(el.ovOver)) { paintOverBoard(); }
+      return true;
+    }).catch(function () {
+      cloudState = 'offline';
+      paintBoardSub();
+      if (el.ovBoard && ovShown(el.ovBoard)) { renderBoard(); }
+      if (el.ovOver && ovShown(el.ovOver)) { paintOverBoard(); }
+      return false;
+    });
+  }
+
   function renderBoard() {
     if (!el.boardList) { return; }
-    var rows = L.boardRows(board, boardKey, L.BOARD_VIEW);
+    var rows = boardRowsFor(boardKey);
     var unit = L.BOARD_META[boardKey].unit;
     var html = '';
     for (var i = 0; i < rows.length; i++) {
       var r = rows[i];
-      var cls = 'bl-row' + (i < 3 ? ' p' + (i + 1) : '') + (r.id === lastRecordId ? ' me' : '');
+      var cls = 'bl-row' + (i < 3 ? ' p' + (i + 1) : '') + (isMineRow(r) ? ' me' : '');
       var sub = '第 ' + r.level + ' 关 · 连击 ' + r.comboBest +
         (r.outcome === 'quit' ? ' · 中途退出' : '') + ' · ' + dateLabel(r.ts);
       html += '<li class="' + cls + '">' +
@@ -1027,8 +1119,16 @@
    *   进榜且已署名     → 报名次，不再打扰。 */
   function paintOverBoard() {
     if (!el.overLb) { return; }
-    var rec = currentRecord();
-    var rank = rec ? L.rankOf(board, rec.id, 'score') : 0;
+    var rec = lastRec || currentRecord();
+    var live = cloudOn();
+    /* 联网时名次来自全服榜，离线时来自本机榜。
+     * 这两套数字**不能混着用** —— 以前"新纪录"和"名次"就是各算各的，
+     * 结果出现过"#3 却写着本机第 1 名"。 */
+    var rank = 0;
+    if (rec) { rank = live ? cloudRankOf(rec) : L.rankOf(board, rec.id, 'score'); }
+    var total = live ? cloudCount : board.length;
+    var needName = !myName;
+
     /* 这一局的脸跟着记录走；没记录（没挤进榜）也把"你的脸"亮出来，
      * 让玩家知道下次上榜顶的是哪一张。 */
     fillAva(el.overAva, rec && rec.avatar ? rec.avatar : ensureAvatar());
@@ -1038,25 +1138,42 @@
       (!rank ? ' none' : rank === 2 ? ' silver' : rank === 3 ? ' bronze' : rank > 3 ? ' plain' : '');
 
     if (!rank) {
-      el.overRankBadge.textContent = '未上榜';
-      el.overRankTxt.textContent = '这局没挤进前 ' + L.BOARD_LIMIT + ' 条。';
-      el.overNameRow.hidden = true;
-      el.overNameHint.textContent = '榜上只留 ' + L.BOARD_LIMIT + ' 条，多挖几钩就进来了。';
+      el.overRankBadge.textContent = live ? '前 50 外' : '未上榜';
+      if (live) {
+        el.overRankTxt.textContent = needName
+          ? '起个名才会上榜 —— 全服榜按名字认人。'
+          : '这局没进全服前 50。';
+      } else {
+        el.overRankTxt.textContent = '这局没挤进前 ' + L.BOARD_LIMIT + ' 条。';
+      }
+      el.overNameRow.hidden = !needName;
+      if (needName) { el.overNameHint.textContent = '最多 8 个字 · 上榜后所有玩家可见。'; }
+      else { el.overNameHint.textContent = '榜上只留前 50，多挖几钩就进来了。'; }
       return;
     }
 
     el.overRankBadge.textContent = '#' + rank;
     el.overRankTxt.innerHTML = (lastRunBest && rank === 1)
-      ? '本机第 <b>1</b> 名 · 新纪录！'
-      : '本机第 <b>' + rank + '</b> 名 · 共 <b>' + board.length + '</b> 条';
+      ? (live ? '全服第 <b>1</b> 名 · 新纪录！' : '本机第 <b>1</b> 名 · 新纪录！')
+      : ((live ? '全服第 <b>' : '本机第 <b>') + rank + '</b> 名 · 共 <b>' + fmt(total) + '</b> 条');
 
-    var needName = !rec.named;
     el.overNameRow.hidden = !needName;
     if (needName) {
-      el.overNameHint.textContent = '最多 8 个字 · 只存在这台设备，下次自动带上。';
+      el.overNameHint.textContent = '最多 8 个字 · 上榜后所有玩家可见。';
+    } else if (live) {
+      el.overNameHint.innerHTML = '以「<b>' + esc(myName) + '</b>」出现在全服榜上 · 排名实时刷新。';
     } else {
-      el.overNameHint.innerHTML = '以「<b>' + esc(rec.name) + '</b>」上榜 · 名字只存本机，下次自动用。';
+      el.overNameHint.innerHTML = '以「<b>' + esc(myName) + '</b>」上榜 · 名字只存本机，下次自动用。';
     }
+  }
+
+  /* 这一局在全服榜里排第几。只拉了前 50，没找到就是"50 外"（返回 0）。 */
+  function cloudRankOf(rec) {
+    var list = cloudRows.score;
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].runId && list[i].runId === rec.id) { return i + 1; }
+    }
+    return 0;
   }
 
   function openBoard(from) {
@@ -1065,8 +1182,12 @@
     el.boardNameInput.value = myName || '';
     el.boardNameNote.textContent = myName ? '改完自动保存' : '起个名，下次自动用';
     fillAva(el.boardAva, ensureAvatar());
+    paintBoardSub();
     renderBoard();
     show(el.ovBoard);
+    /* 每次打开都刷一次 —— 别人刚打出来的成绩，这里应该是新的。
+     * 拉回来会自己重绘（见 refreshCloud），不用在这里等。 */
+    if (CLOUD) { refreshCloud(); }
   }
 
   function closeBoard() {
@@ -1518,6 +1639,10 @@
   buildLegend();
   refreshBestLine();
   refreshLbMeta();
+  paintBoardSub();
+  /* 开始页那句"共 N 条 · 第一 XX"直接读全服。
+   * 连不上就保持本机文案，不弹任何错误 —— 玩家不需要知道后端叫什么。 */
+  if (CLOUD) { refreshCloud(); }
   if (SFX && SFX.isMuted && SFX.isMuted()) { el.mute.classList.add('off'); }
   raf = requestAnimationFrame(loop);
 
@@ -1532,6 +1657,11 @@
     get board() { return board; },
     get name() { return myName; },
     get avatar() { return myAvatar; },
+    get cloud() {
+      return { state: cloudState, count: cloudCount, rows: cloudRows,
+               pending: CLOUD ? CLOUD.pending() : 0 };
+    },
+    refreshCloud: refreshCloud,
     start: start,
     fit: fit,
   };  // 方便调试
