@@ -6,7 +6,7 @@
 >
 > 手机与电脑均适配，点开即玩，无需安装。合集入口页：<https://chanbigcool.github.io/Naiwa-miner/>
 >
-> 备用镜像：<https://naiwa-mini-games.app.workbuddy.host/miner/>（手动发布的目录快照，可能滞后于仓库，以上面那条为准）
+> 备用镜像：<https://naiwa-mini-games.app.workbuddy.host/miner/>（手动发布的目录快照，代码更新后需重新发布才同步，以上面那条为准）
 
 用「奶蛙」形象重制的黄金矿工（Gold Miner）。原生 HTML / CSS / JavaScript 实现，
 无依赖、无构建步骤，`file://` 直接打开即可离线运行。
