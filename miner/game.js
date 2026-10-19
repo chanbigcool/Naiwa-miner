@@ -352,10 +352,13 @@
   function refreshLbMeta() {
     if (!el.lbMeta) { return; }
     /* 联网时以**全服**为准：开始页那行小字是玩家看到的第一条榜单信息，
-     * 写着"共 8 条"而榜里其实是全服前八，会显得这个游戏很冷清。 */
-    if (cloudOn() && cloudRows.score.length) {
+     * 写着"共 8 条"而榜里其实是全服前八，会显得这个游戏很冷清。
+     * 云榜为空也要如实说空，不能退回本机凑数 —— 那样同一屏会有两套数字。 */
+    if (cloudOn()) {
       var ct = L.sortBoard(cloudRows.score, 'score')[0];
-      el.lbMeta.textContent = '全服 ' + fmt(cloudCount) + ' 条 · 第一 ' + ct.name + ' ' + fmt(ct.score);
+      el.lbMeta.textContent = ct
+        ? '全服 ' + fmt(cloudCount) + ' 条 · 第一 ' + ct.name + ' ' + fmt(ct.score)
+        : '全服还没有记录';
       return;
     }
     if (!board.length) { el.lbMeta.textContent = '还没有记录'; return; }
@@ -1035,10 +1038,14 @@
   }
 
   /* 榜上展示哪一份：能连上就看全服，连不上看本机。
-   * 两边行结构一样（name/avatar/score/level/comboBest/ts），所以渲染只有一份。 */
+   * 两边行结构一样（name/avatar/score/level/comboBest/ts），所以渲染只有一份。
+   *
+   * 联网时**不许回退到本机**：云榜为空就显示空。以前这里写了
+   * `cloudRows[key].length` 才用云端，云端空的时候悄悄渲染本机记录，
+   * 结果标题是"全服榜 · 共 0 条"、下面却列着一串本机成绩 —— 同一屏两套数据。 */
   function boardRowsFor(key) {
-    if (cloudOn() && cloudRows[key] && cloudRows[key].length) {
-      return L.boardRows(cloudRows[key], key, L.BOARD_VIEW);
+    if (cloudOn()) {
+      return L.boardRows(cloudRows[key] || [], key, L.BOARD_VIEW);
     }
     return L.boardRows(board, key, L.BOARD_VIEW);
   }

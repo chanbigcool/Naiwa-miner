@@ -156,6 +156,38 @@ async function main() {
   need(report.board.rows[0].me === true, '自己那条（设备指纹相同）应该高亮');
   await shot('01-board-cloud.png');
 
+  /* 2.5 云榜**为空**时，不许拿本机记录凑数。
+   * 这是线上真实抓到过的 bug：标题"全服榜 · 共 0 条"，下面却列着本机成绩。 */
+  await evaluate(`(() => {
+    window.__miner.board.push({ id: 'local-x', name: '本机玩家甲', avatar: 'blob',
+      score: 99999, level: 9, comboBest: 9, ts: Date.now(), preset: 'standard',
+      outcome: 'fail', named: true });
+    const C = window.MinerCloud;
+    window.__realLoad = C.load;
+    C.load = function () {
+      return Promise.resolve({ count: 0, rows: { score: [], level: [], combo: [] } });
+    };
+  })()`);
+  await evaluate('window.__miner.refreshCloud()');
+  await sleep(400);
+  report.emptyCloud = await evaluate(`(() => ({
+    sub: document.getElementById('boardSub').textContent,
+    rows: document.querySelectorAll('#boardList li').length,
+    empty: !document.getElementById('boardEmpty').hidden,
+    meta: document.getElementById('lbMeta').textContent,
+  }))()`);
+  need(/共 0 条/.test(report.emptyCloud.sub), '云榜为空时子标题该写 0 条：' + report.emptyCloud.sub);
+  need(report.emptyCloud.rows === 0,
+    '云榜为空时不能渲染本机记录，实际渲染了 ' + report.emptyCloud.rows + ' 行');
+  need(report.emptyCloud.empty, '云榜为空时应该显示空榜提示');
+  need(/全服/.test(report.emptyCloud.meta), '开始页摘要也该如实说全服为空：' + report.emptyCloud.meta);
+  await shot('01b-board-cloud-empty.png');
+
+  /* 把假后端恢复成有数据的版本，继续后面的用例 */
+  await evaluate('window.MinerCloud.load = window.__realLoad');
+  await evaluate('window.__miner.refreshCloud()');
+  await sleep(400);
+
   /* 3. 起名触发补传 */
   await evaluate(`(() => { const i = document.getElementById('boardNameInput');
     i.focus(); i.value = ''; })()`);
