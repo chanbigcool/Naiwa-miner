@@ -353,38 +353,72 @@
     var s = 1.55 * (C.MINER_SIZE / 168);
     ctx.save();
     ctx.translate(h.x, h.y);
-    ctx.rotate(game.angle * Math.PI / 180);
+    /* 注意这里是 -angle。canvas 的 rotate 是顺时针为正，而 hookPos 用
+     * (sin a, cos a) 定位（a>0 时钩子在矿工右侧），两者的手性相反：
+     * 写成 rotate(+angle) 会让钩尖镜像到绳子的另一侧，摆到 75° 时几乎
+     * 反向指着奶蛙，玩家据此判断出钩方向必然错位。 */
+    ctx.rotate(-game.angle * Math.PI / 180);
     ctx.scale(s, s);
 
-    // 深色打底：保证钩子在土层、立绘上都能看清
-    ctx.strokeStyle = 'rgba(48, 30, 14, .5)';
-    ctx.lineWidth = 12;
+    /* 造型要点（换掉旧版的原因）：
+     * 判定点就在 (0,0) —— hookPos 算出来的那个点，必须落进物品半径内才算抓到。
+     * 所以所有元素都以 (0,0) 为轴心，并且只朝 +y（出钩方向）展开：
+     *   - 中轴杆把绳子那条线延续进钩体，摆动时"往哪扎"一眼可读；
+     *   - 两片月牙爪左右对称、重心落在绳轴上，不会像旧版 C 形环那样
+     *     整团看起来在"转圈"，让玩家读不出朝向、只能估摸着出钩；
+     *   - 爪尖自然收尖且不过度外伸，避免视觉上比实际判定更长。
+     */
+    ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.moveTo(-15, -6); ctx.quadraticCurveTo(-19, 12, -5, 17);
-    ctx.moveTo(15, -6); ctx.quadraticCurveTo(19, 12, 5, 17);
-    ctx.stroke();
-    ctx.fillStyle = 'rgba(48, 30, 14, .5)';
-    ctx.beginPath();
-    ctx.arc(0, 0, 12, 0, 6.2832);
-    ctx.fill();
 
-    // 爪钩本体
-    ctx.strokeStyle = '#5d636e';
-    ctx.lineWidth = 7;
+    var OUT = 'rgba(42, 26, 12, .6)';
+
+    // 一片爪：外缘鼓、内缘收，末端收成尖
+    var prong = function (sx) {
+      ctx.beginPath();
+      ctx.moveTo(sx * 1.6, -1.5);
+      ctx.quadraticCurveTo(sx * 4.4, 9, sx * 8.4, 18.6);
+      ctx.quadraticCurveTo(sx * 14.0, 8, sx * 1.6, -1.5);
+      ctx.closePath();
+    };
+
+    // 深色打底：保证钩子在土层、立绘上都能看清
+    ctx.strokeStyle = OUT;
+    ctx.fillStyle = OUT;
+    ctx.lineWidth = 7.2;
+    ctx.beginPath(); ctx.moveTo(0, -14); ctx.lineTo(0, 2); ctx.stroke();
+    ctx.lineWidth = 5.6;
+    prong(-1); ctx.stroke();
+    prong(1); ctx.stroke();
+
+    // 爪臂本体
+    ctx.fillStyle = '#7b8492';
+    prong(-1); ctx.fill();
+    prong(1); ctx.fill();
+
+    // 外缘高光：金属弧，顺带把向外的轮廓勾清楚
+    ctx.strokeStyle = 'rgba(226, 233, 241, .38)';
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.moveTo(-15, -6); ctx.quadraticCurveTo(-19, 12, -5, 17);
-    ctx.moveTo(15, -6); ctx.quadraticCurveTo(19, 12, 5, 17);
+    ctx.moveTo(-2.6, 1.5); ctx.quadraticCurveTo(-12.0, 8, -7.4, 16.6);
+    ctx.moveTo(2.6, 1.5);  ctx.quadraticCurveTo(12.0, 8, 7.4, 16.6);
     ctx.stroke();
 
-    ctx.fillStyle = '#8a919d';
-    ctx.beginPath();
-    ctx.arc(0, 0, 9, 0, 6.2832);
-    ctx.fill();
-    ctx.fillStyle = '#c3c9d2';
-    ctx.beginPath();
-    ctx.arc(-2.6, -2.6, 3.6, 0, 6.2832);
-    ctx.fill();
+    // 中轴杆本体（压在爪根上，形成一条脊）
+    ctx.strokeStyle = '#a3abb7';
+    ctx.lineWidth = 3.6;
+    ctx.beginPath(); ctx.moveTo(0, -13); ctx.lineTo(0, 2); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255, 252, 240, .5)';
+    ctx.lineWidth = 1.3;
+    ctx.beginPath(); ctx.moveTo(0, -12); ctx.lineTo(0, 1); ctx.stroke();
+
+    // 扣件：正好压在判定点上
+    ctx.beginPath(); ctx.arc(0, 1.5, 4.4, 0, 6.2832);
+    ctx.fillStyle = '#8d96a3'; ctx.fill();
+    ctx.strokeStyle = '#3a414a'; ctx.lineWidth = 1.3; ctx.stroke();
+    ctx.fillStyle = 'rgba(255, 255, 255, .75)';
+    ctx.beginPath(); ctx.arc(-1.5, 0.1, 1.4, 0, 6.2832); ctx.fill();
+
     ctx.restore();
   }
 
