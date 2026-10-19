@@ -171,7 +171,9 @@ try {
     { id: 'e', name: '奶蛙矿工', score: 1500, level: 3, comboBest: 3, ts: now - 100000, preset: 'relaxed', named: false },
     { id: 'f', name: '奶蛙矿工', score: 880, level: 1, comboBest: 2, ts: now - 50000, preset: 'standard', named: false },
   ];
-  await evaluate(`localStorage.setItem('naiwa_miner_board_v1', ${JSON.stringify(JSON.stringify(seed))}); location.reload();`);
+  /* 模拟"新设备导入别人的存档"：头像键也清掉，否则第 1 步空榜时已经分好脸了 */
+  await evaluate(`localStorage.setItem('naiwa_miner_board_v1', ${JSON.stringify(JSON.stringify(seed))});
+    localStorage.removeItem('naiwa_miner_avatar'); location.reload();`);
   await waitReady();
   report.seededMeta = await evaluate('document.getElementById("lbMeta").textContent');
   need(report.seededMeta.indexOf('共 6 条') === 0, '入口文案没算对：' + report.seededMeta);
