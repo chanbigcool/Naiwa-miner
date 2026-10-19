@@ -804,7 +804,6 @@
       angle: 0,              // 当前角度（度），右正
       swingClock: 0,         // 摆钟相位时钟（秒）——只增不减，但钩子离手时按 PHASE_DRIFT_RATE 减速推进
       returning: false,      // true 表示正在从"发射锁定角度"限速接回钟摆（见 CONFIG.RETURN_SPEED）
-      returnFrom: 0,         // 接回的起点角度
       ropeLen: cfg.ROPE_IDLE_LEN,
       hook: { x: cfg.MINER_X, y: cfg.MINER_Y + cfg.ROPE_IDLE_LEN },
 
@@ -846,7 +845,7 @@
     state.target = 0;
     state.levelStartScore = 0;
     state.timeLeft = cfg.LEVEL_TIME;
-    state.angle = 0; state.swingClock = 0; state.returning = false; state.returnFrom = 0;
+    state.angle = 0; state.swingClock = 0; state.returning = false;
     state.ropeLen = cfg.ROPE_IDLE_LEN;
     state.hook = { x: cfg.MINER_X, y: cfg.MINER_Y + cfg.ROPE_IDLE_LEN };
     state.held = null; state.pullT = 0; state.grabbedThisShot = false; state.escapeAtLen = 0;
@@ -1328,7 +1327,6 @@
         state.boomBoost = false;
         settle(state, ev);
         // 从当前锁定角度限速接回钟摆（而不是把钟摆归零）
-        state.returnFrom = state.angle;
         state.returning = true;
         state.phase = 'swinging';
       }
