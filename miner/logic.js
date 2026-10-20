@@ -1446,8 +1446,12 @@
    *      先渲染再落盘，不会出现"界面上有、硬盘上没有"的半截状态。
    * ===================================================================== */
 
-  var BOARD_LIMIT = 40;                    // 存档上限（不是展示上限）
-  var BOARD_VIEW = 8;                      // 每个榜展示前几名
+  /* 榜单要能一直往下翻，所以这两个数都放大了：
+   *   BOARD_LIMIT —— 本机存档留多少条（一百多局足够覆盖一个玩家）
+   *   BOARD_VIEW  —— 每个榜最多渲染多少行（列表自己滚，不再只给前八）
+   * 云端一次也按 BOARD_VIEW 拉，两边看到的是同一段长度。 */
+  var BOARD_LIMIT = 200;                   // 存档上限（不是展示上限）
+  var BOARD_VIEW = 100;                    // 每个榜最多展示多少行
   var NAME_MAX = 8;                        // 名字最长几个字
   var DEFAULT_NAME = '奶蛙矿工';
 
@@ -1594,7 +1598,9 @@
     var arr = (list || []).slice();
     if (arr.length <= limit) { return arr; }
 
-    var quota = Math.max(1, Math.min(BOARD_VIEW, Math.floor(limit / BOARD_KEYS.length)));
+    /* 三个榜的头部各留一段。以前 BOARD_VIEW 只有 8，这里等于 8；
+     * 放到 100 之后必须按 limit 均分，否则一个榜就能把 200 条全占满。 */
+    var quota = Math.max(1, Math.min(Math.floor(limit / BOARD_KEYS.length), BOARD_VIEW));
     var keep = [], seen = {};
     function take(r) {
       if (!r || seen[r.id]) { return; }

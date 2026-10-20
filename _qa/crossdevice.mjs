@@ -81,7 +81,7 @@ async function withBrowser(label, fn) {
     await send('Runtime.enable');
     await send('Page.navigate', { url: TARGET });
     for (let i = 0; i < 80; i++) {
-      const ready = await evaluate(`!!(window.__miner && window.__miner.game && document.getElementById('btnStart'))`).catch(() => false);
+      const ready = await evaluate(`!!(window.__miner && window.__miner.game && window.__miner.game.phase !== 'ready')`).catch(() => false);
       if (ready) { break; }
       await sleep(150);
     }
@@ -119,7 +119,7 @@ await withBrowser('A', async ({ evaluate, requests }) => {
     location.reload();
   })()`);
   for (let i = 0; i < 80; i++) {
-    const ok = await evaluate(`!!(window.__miner && window.__miner.game && document.getElementById('btnStart'))`).catch(() => false);
+    const ok = await evaluate(`!!(window.__miner && window.__miner.game && window.__miner.game.phase !== 'ready')`).catch(() => false);
     if (ok) { break; }
     await sleep(150);
   }
@@ -140,6 +140,7 @@ await withBrowser('A', async ({ evaluate, requests }) => {
 /* ---------- 玩家 B：同一网址，独立配置 ---------- */
 await withBrowser('B', async ({ evaluate, requests }) => {
   const board = await evaluate(readBoard);
+  /* 开始页没了：入口摘要变成右上角按钮上的条数徽章 */
   const startText = await evaluate(`(() => {
     const n = document.getElementById('lbMeta');
     return n ? n.textContent : null;

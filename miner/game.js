@@ -45,22 +45,19 @@
     dynTip: document.getElementById('dynTip'),
     timeStat: document.querySelector('.stat.time'),
 
-    ovStart: document.getElementById('ovStart'),
     ovPause: document.getElementById('ovPause'),
     ovClear: document.getElementById('ovClear'),
     ovOver: document.getElementById('ovOver'),
     ovShop: document.getElementById('ovShop'),
 
-    btnStart: document.getElementById('btnStart'),
     btnResume: document.getElementById('btnResume'),
+    btnPause: document.getElementById('btnPause'),
     btnQuit: document.getElementById('btnQuit'),
     btnNext: document.getElementById('btnNext'),
     btnAgain: document.getElementById('btnAgain'),
     btnShopGo: document.getElementById('btnShopGo'),
 
     preset: document.getElementById('preset'),
-    bestScore: document.getElementById('bestScore'),
-    bestLevel: document.getElementById('bestLevel'),
     clearSub: document.getElementById('clearSub'),
     clearTally: document.getElementById('clearTally'),
     clearTitle: document.getElementById('clearTitle'),
@@ -87,6 +84,9 @@
     boardAva: document.getElementById('boardAva'),
     boardTabs: document.getElementById('boardTabs'),
     boardList: document.getElementById('boardList'),
+    boardScroll: document.getElementById('boardScroll'),
+    boardBox: document.getElementById('boardBox'),
+    boardMore: document.getElementById('boardMore'),
     boardEmpty: document.getElementById('boardEmpty'),
     btnBoardClose: document.getElementById('btnBoardClose'),
 
@@ -451,21 +451,24 @@
     return true;
   }
 
+  /* 排行榜按钮上的那个数字。
+   * 开始页没了，原来那行"共 N 条 · 第一 XX"放不进一颗药丸，
+   * 所以按钮只留条数，详细的那句挪到 title / aria-label 里（长按桌面上能看到）。
+   * 联网时以**全服**为准，云榜为空也如实说空，绝不退回本机凑数。 */
   function refreshLbMeta() {
     if (!el.lbMeta) { return; }
-    /* 联网时以**全服**为准：开始页那行小字是玩家看到的第一条榜单信息，
-     * 写着"共 8 条"而榜里其实是全服前八，会显得这个游戏很冷清。
-     * 云榜为空也要如实说空，不能退回本机凑数 —— 那样同一屏会有两套数字。 */
-    if (cloudOn()) {
-      var ct = L.sortBoard(cloudRows.score, 'score')[0];
-      el.lbMeta.textContent = ct
-        ? '全服 ' + fmt(cloudCount) + ' 条 · 第一 ' + ct.name + ' ' + fmt(ct.score)
-        : '全服还没有记录';
-      return;
+    var live = cloudOn();
+    var n = live ? cloudCount : board.length;
+    el.lbMeta.textContent = n > 999 ? '999+' : String(n);
+    el.lbMeta.classList.toggle('zero', n === 0);
+    if (el.btnOpenBoard) {
+      var top = live ? L.sortBoard(cloudRows.score, 'score')[0] : L.sortBoard(board, 'score')[0];
+      var where = live ? '全服榜' : '本机榜';
+      var desc = n === 0 ? where + '还没有记录'
+        : where + ' · 共 ' + fmt(n) + ' 条' + (top ? ' · 第一 ' + top.name + ' ' + fmt(top.score) : '');
+      el.btnOpenBoard.title = desc;
+      el.btnOpenBoard.setAttribute('aria-label', '排行榜：' + desc);
     }
-    if (!board.length) { el.lbMeta.textContent = '还没有记录'; return; }
-    var top = L.sortBoard(board, 'score')[0];
-    el.lbMeta.textContent = '共 ' + board.length + ' 条 · 第一 ' + top.name + ' ' + fmt(top.score) + ' 分';
   }
 
   /* "最高分 / 最远关卡"以**榜单**为准。
@@ -494,7 +497,7 @@
       var im = new Image();
       im.onload = im.onerror = function () {
         pending -= 1;
-        if (pending <= 0) { assetsReady = true; el.btnStart.textContent = '开始挖矿'; }
+        if (pending <= 0) { assetsReady = true; autoStart(); }
       };
       im.src = src;
       IMG[k] = im;
@@ -1158,7 +1161,7 @@
   /* ============================ 覆盖层 ============================ */
   var ALL_OV = null;
   function ovList() {
-    if (!ALL_OV) { ALL_OV = [el.ovStart, el.ovPause, el.ovClear, el.ovOver, el.ovShop, el.ovBoard]; }
+    if (!ALL_OV) { ALL_OV = [el.ovPause, el.ovClear, el.ovOver, el.ovShop, el.ovBoard]; }
     return ALL_OV;
   }
   function show(node) {
@@ -1218,6 +1221,16 @@
     }
     return L.boardRows(board, key, L.BOARD_VIEW);
   }
+
+  /* 榜单是不是还有更下面没露出来的行。只有真的能滚才提示，
+   * 十条以内的榜摆一句"下滑看更多"会显得莫名其妙。 */
+  function updateBoardMore() {
+    if (!el.boardMore || !el.boardScroll) { return; }
+    var left = el.boardScroll.scrollHeight - el.boardScroll.clientHeight - el.boardScroll.scrollTop;
+    var atEnd = left <= 8;
+    el.boardMore.hidden = atEnd;
+    if (el.boardBox) { el.boardBox.classList.toggle('at-end', atEnd); }
+  }
   function isMineRow(r) {
     /* 本机榜按"最近一局"标，全服榜按设备指纹标 —— 全服榜里你可能有好多条 */
     if (cloudOn()) { return !!r.clientId && r.clientId === CLOUD.clientId(); }
@@ -1247,7 +1260,7 @@
       paintBoardSub();
       return Promise.resolve(false);
     }
-    return CLOUD.load(50).then(function (res) {
+    return CLOUD.load(L.BOARD_VIEW).then(function (res) {
       cloudRows = res.rows;
       cloudCount = res.count;
       cloudState = 'online';
@@ -1294,6 +1307,7 @@
     el.boardList.innerHTML = html;
     el.boardEmpty.hidden = rows.length > 0;
     syncBoardTabs();
+    updateBoardMore();
   }
 
   /* 结算卡上的上榜区。三种状态：
@@ -1321,12 +1335,12 @@
       (!rank ? ' none' : rank === 2 ? ' silver' : rank === 3 ? ' bronze' : rank > 3 ? ' plain' : '');
 
     if (!rank) {
-      el.overRankBadge.textContent = live ? '前 50 外' : '未上榜';
+      el.overRankBadge.textContent = live ? '前 ' + L.BOARD_VIEW + ' 外' : '未上榜';
       if (!rec) {
         el.overRankTxt.textContent = '这局没打出成绩，先不上榜。';
       } else if (live) {
         el.overRankTxt.textContent = rec.named
-          ? '这局没进全服前 50。'
+          ? '这局没进全服前 ' + L.BOARD_VIEW + ' 名。'
           : '起个名才会上榜 —— 全服榜按名字认人。';
       } else {
         el.overRankTxt.textContent = '这局没挤进前 ' + L.BOARD_LIMIT + ' 条。';
@@ -1353,7 +1367,9 @@
     } else if (locked) {
       el.overNameHint.innerHTML = '已以「<b>' + esc(rec.name) + '</b>」上榜 · 名字定格，下一局可以换';
     } else {
-      el.overNameHint.textContent = live ? '全服榜只留前 50。' : '榜上只留前 ' + L.BOARD_LIMIT + ' 条。';
+      el.overNameHint.textContent = live
+        ? '全服榜只显示前 ' + L.BOARD_VIEW + ' 名。'
+        : '榜上只留前 ' + L.BOARD_LIMIT + ' 条。';
     }
   }
 
@@ -1377,6 +1393,10 @@
     paintBoardSub();
     renderBoard();
     show(el.ovBoard);
+    /* 必须等浮层真的显示出来再量：display:none 的时候
+     * scrollHeight / clientHeight 都是 0，"还有没有更多"永远算成没有。 */
+    if (el.boardScroll) { el.boardScroll.scrollTop = 0; }
+    updateBoardMore();
     /* 每次打开都刷一次 —— 别人刚打出来的成绩，这里应该是新的。
      * 拉回来会自己重绘（见 refreshCloud），不用在这里等。 */
     if (CLOUD) { refreshCloud(); }
@@ -1577,16 +1597,34 @@
     refreshSwingNote();
   }
 
-  function start() {
+  /* 开一局。开始页已经去掉，所以这里既是"第一次进来"，也是"再来一局"。
+   * 名字没确认就切走的那条，在这里顺手上交（云端只增不改，晚了就改不回来）。 */
+  function start(withAudio) {
     if (!assetsReady) { return; }
-    /* 上一局如果在结算卡上没点"上榜"就走了，名字用的是默认值 —— 这时才传 */
     submitPending();
-    if (SFX) { SFX.init(); }
+    beginSession(withAudio !== false);
+  }
+
+  /* 只负责把一局真正跑起来，不碰上报。
+   * 重开 / 换难度走这里 —— 那一局已经作为 quit 记过账了，不能再报一次。 */
+  function beginSession(withAudio) {
+    /* 自动开局不是用户手势，这时候建 AudioContext 只会换来一条
+     * "AudioContext was not allowed to start" 的警告。
+     * 交给 sfx.js 自己的手势监听去解锁，第一次点击/按键就出声。 */
+    if (withAudio && SFX) { SFX.init(); }
     newRun();
     fit();
     handle(L.beginLevel(game));
     hideAll();
     syncHud();
+  }
+
+  /* 资源到齐自动开局。只做一次：之后的开局都由 start / restartRun 显式触发。 */
+  var autoStarted = false;
+  function autoStart() {
+    if (autoStarted || !assetsReady) { return; }
+    autoStarted = true;
+    start(false);
   }
 
   function toNextLevel() {
@@ -1602,22 +1640,14 @@
     else { toNextLevel(); }
   }
 
-  function quitToStart() {
-    /* 中途退出也留档：一条打到第 8 关的成绩，不该因为没"死"就凭空消失。
-     * 空局（0 分）由 recordRun 自己挡掉。 */
+  /* 重开（也用于换难度）：先给这一局记账，再开新的。
+   * 一条打到第 8 关的成绩不该因为"重开"就凭空消失；
+   * 空局（0 分）由 recordRun 自己挡掉，不会在榜上留空壳。 */
+  function restartRun() {
     recordRun('quit');
     lastRunBest = false;
     paused = false;
-    newRun();
-    fit();
-    refreshBestLine();
-    show(el.ovStart);
-  }
-
-  function refreshBestLine() {
-    var rb = recordBest();
-    el.bestScore.textContent = rb.score;
-    el.bestLevel.textContent = rb.level;
+    beginSession(true);          // 点按钮进来的，是手势，可以直接开音频
   }
 
   /* 开始页显示当前的摆动速度，让"越往后越快"这件事是可见的 */
@@ -1665,7 +1695,8 @@
   stage.addEventListener('pointerdown', function (ev) {
     // 覆盖层 / 按钮自己处理点击
     if (ev.target.closest && (ev.target.closest('.overlay') || ev.target.closest('.mute') ||
-        ev.target.closest('.dyn') || ev.target.closest('.keep-hint'))) { return; }
+        ev.target.closest('.dyn') || ev.target.closest('.keep-hint') ||
+        ev.target.closest('.tools'))) { return; }
     tryShoot();
   });
 
@@ -1688,10 +1719,19 @@
     }
   });
 
-  el.btnStart.addEventListener('click', start);
   el.btnNext.addEventListener('click', advance);
   el.btnAgain.addEventListener('click', start);
-  el.btnQuit.addEventListener('click', quitToStart);
+  el.btnQuit.addEventListener('click', restartRun);
+
+  /* 暂停：给玩家一个能主动喘气的地方。
+   * 以前只有"切走页面"会自动暂停，想换难度根本没入口。 */
+  if (el.btnPause) {
+    el.btnPause.addEventListener('click', function () {
+      if (!game || anyOverlayShown()) { return; }
+      paused = true;
+      show(el.ovPause);
+    });
+  }
   el.btnResume.addEventListener('click', function () {
     paused = false;
     lastT = 0;
@@ -1703,7 +1743,10 @@
   el.keep.addEventListener('click', tryCashOut);
 
   /* ---- 排行榜：入口、返回、换榜、起名 ---- */
-  el.btnOpenBoard.addEventListener('click', function () { openBoard(el.ovStart); });
+  el.btnOpenBoard.addEventListener('click', function () { openBoard(null); });
+  if (el.boardScroll) {
+    el.boardScroll.addEventListener('scroll', updateBoardMore, { passive: true });
+  }
   el.btnOverBoard.addEventListener('click', function () { openBoard(el.ovOver); });
   el.btnBoardClose.addEventListener('click', closeBoard);
 
@@ -1766,16 +1809,20 @@
     }
   });
 
+  /* 难度：换档就是换一局。
+   * 不做"下局生效"—— 那样玩家选完还在用旧参数打，看着像设置没保存。
+   * 这一局先按 quit 记账（见 restartRun），所以换档不会顺手吞掉成绩。 */
   el.preset.addEventListener('click', function (ev) {
     var b = ev.target.closest ? ev.target.closest('button[data-preset]') : null;
     if (!b) { return; }
-    preset = b.getAttribute('data-preset');
+    var next = b.getAttribute('data-preset');
+    if (next === preset) { return; }
+    preset = next;
     Array.prototype.forEach.call(el.preset.querySelectorAll('button'), function (x) {
       x.classList.toggle('on', x === b);
     });
     if (SFX) { SFX.click(); }
-    if (game && game.phase === 'ready') { newRun(); fit(); }
-    refreshSwingNote();
+    restartRun();
   });
 
   el.mute.addEventListener('click', function () {
@@ -1804,12 +1851,12 @@
   window.addEventListener('resize', fit);
   window.addEventListener('orientationchange', function () { setTimeout(fit, 120); });
 
-  /* ============================ 启动 ============================ */
-  el.btnStart.textContent = '加载奶蛙中…';
+  /* ============================ 启动 ============================
+   * 没有开始页：进来就是矿区。资源到齐就真的开打（见 autoStart），
+   * 这里先建一局把画面填上，免得第一帧是白板。 */
   preload();
-  newRun();                 // 先建一局（ready 态）当开始页的背景，别让舞台空着
+  newRun();
   fit();
-  refreshBestLine();
   refreshLbMeta();
   paintBoardSub();
   /* 开始页那句"共 N 条 · 第一 XX"直接读全服。
@@ -1818,9 +1865,10 @@
   if (SFX && SFX.isMuted && SFX.isMuted()) { el.mute.classList.add('off'); }
   raf = requestAnimationFrame(loop);
 
-  // 兜底：万一某张图挂了，2.5 秒后也放行
+  // 兜底：万一某张图挂了，2.5 秒后也放行开局
   setTimeout(function () {
-    if (!assetsReady) { assetsReady = true; el.btnStart.textContent = '开始挖矿'; }
+    if (!assetsReady) { assetsReady = true; }
+    autoStart();
   }, 2500);
 
   window.__miner = {
@@ -1836,6 +1884,9 @@
     },
     refreshCloud: refreshCloud,
     start: start,
+    restart: restartRun,
     fit: fit,
+    get boardView() { return L.BOARD_VIEW; },
+    get boardLimit() { return L.BOARD_LIMIT; },
   };  // 方便调试
 })();

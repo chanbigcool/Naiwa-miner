@@ -65,9 +65,10 @@ async function shot(name) {
   const r = await send('Page.captureScreenshot', { format: 'png' });
   fs.writeFileSync(path.join(OUTDIR, name), Buffer.from(r.data, 'base64'));
 }
+const need = (cond, msg) => { if (!cond) throw new Error('断言失败: ' + msg); };
 async function waitReady() {
   for (let i = 0; i < 120; i++) {
-    if (await ev('!!(window.__miner && window.__miner.game && document.readyState === "complete")')) return;
+    if (await ev('!!(window.__miner && window.__miner.game && window.__miner.game.phase !== "ready")')) return;
     await sleep(200);
   }
   throw new Error('就绪超时');
@@ -91,7 +92,7 @@ try {
             localStorage.setItem('naiwa_miner_name', '老王'); location.reload();`);
   await waitReady();
   await sleep(500);
-  await shot('01-start-landscape.png');
+  await shot('01-playing-landscape.png');
 
   const layout = await ev('window.__miner.layout');
   const stage = await ev(`(() => { const r = document.getElementById('stage').getBoundingClientRect();
@@ -101,13 +102,19 @@ try {
   await shot('02-board-landscape.png');
   const overflow = await ev(`(() => {
     const c = document.querySelector('#ovBoard .ov-card');
-    return { scroll: c.scrollHeight, view: c.clientHeight, rows: document.querySelectorAll('#boardList .bl-row').length };
+    const list = document.getElementById('boardScroll');
+    const closeBtn = document.getElementById('btnBoardClose').getBoundingClientRect();
+    return {
+      cardFits: c.getBoundingClientRect().bottom <= innerHeight + 1,
+      closeVisible: closeBtn.bottom <= innerHeight + 1 && closeBtn.top >= 0,
+      listScrollable: list.scrollHeight >= list.clientHeight,
+      rows: document.querySelectorAll('#boardList .bl-row').length,
+    };
   })()`);
+  need(overflow.cardFits && overflow.closeVisible, '横屏榜单卡超出画面：' + JSON.stringify(overflow));
 
   await ev('document.getElementById("btnBoardClose").click()');
-  await sleep(200);
-  await ev('document.getElementById("btnStart").click()');
-  await sleep(700);
+  await sleep(400);
   await ev(`(() => { const g = window.__miner.game; g.score = 8800; g.target = 20000; g.level = 5; g.timeLeft = 0.04; })()`);
   await sleep(800);
   await shot('03-over-landscape.png');

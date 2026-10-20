@@ -1,11 +1,12 @@
 /* 本地 QA：排行榜（CDP 驱动无头 Chrome）
  * ---------------------------------------------------------------------------
  * 覆盖四条真实路径：
- *   1. 空榜 → 开始页入口的状态文案
+ *   1. 空榜 → 右上排行榜按钮的条数徽章
  *   2. 有历史记录 → 三个榜的排序、名字归属（只认未署名的）
  *   3. 已署名玩家结算 → 报名次，名字框仍在（这一局还能改名）
  *   4. 新玩家结算 → 在结算卡上留名，名字落盘、只改这一条
  *   5. 同一台设备第二局换名字 → 榜上两条、两张脸，历史不动
+ *   6. 一百条记录 → 榜单能下滑到最后一名
  * 用法：node _qa/board.mjs http://127.0.0.1:8137/miner/ _qa/shots-board
  */
 import { spawn } from 'node:child_process';
@@ -124,8 +125,8 @@ async function waitReady(maxMs = 30000) {
   while (Date.now() - t0 < maxMs) {
     const ok = await evaluate(`(() => {
       const g = window.__miner && window.__miner.game;
-      const b = document.getElementById('btnStart');
-      return !!(g && b && document.readyState === 'complete');
+      /* 开始页去掉了：资源到齐就自动开局，所以就绪 = 已经在荡钩 */
+      return !!(g && document.readyState === 'complete' && g.phase !== 'ready');
     })()`);
     if (ok) return;
     await sleep(200);
@@ -160,8 +161,11 @@ try {
   /* ---------- 1. 空榜 ---------- */
   await evaluate('localStorage.clear(); location.reload();');
   await waitReady();
+  /* 开始页没了，原来那行"还没有记录"变成按钮上的条数徽章 */
   report.emptyMeta = await evaluate('document.getElementById("lbMeta").textContent');
-  need(report.emptyMeta === '还没有记录', '空榜文案不对：' + report.emptyMeta);
+  need(report.emptyMeta === '0', '空榜时徽章应该是 0：' + report.emptyMeta);
+  need(await evaluate('document.getElementById("btnOpenBoard").title.indexOf("还没有记录") >= 0'),
+    '空榜时按钮 title 应该说明还没有记录');
   await click('#btnOpenBoard');
   await sleep(350);
   report.emptyBoardShown = await evaluate('document.getElementById("ovBoard").classList.contains("show")');
@@ -171,8 +175,12 @@ try {
   await shot('01-board-empty.png');
   await click('#btnBoardClose');
   await sleep(300);
-  report.backToStart = await evaluate('document.getElementById("ovStart").classList.contains("show")');
-  need(report.backToStart, '关掉排行榜应该回到开始页');
+  report.backToGame = await evaluate(`(() => ({
+    overlays: [...document.querySelectorAll('.overlay.show')].map(e => e.id),
+    phase: window.__miner.game.phase,
+  }))()`);
+  need(report.backToGame.overlays.length === 0, '关掉排行榜应该直接回到游戏：' + JSON.stringify(report.backToGame));
+  need(report.backToGame.phase !== 'ready', '关掉排行榜后应该还在玩');
 
   /* ---------- 2. 有历史：三个榜 + 名字归属 ---------- */
   const now = Date.now();
@@ -189,8 +197,10 @@ try {
     localStorage.removeItem('naiwa_miner_avatar'); location.reload();`);
   await waitReady();
   report.seededMeta = await evaluate('document.getElementById("lbMeta").textContent');
-  need(report.seededMeta.indexOf('共 6 条') === 0, '入口文案没算对：' + report.seededMeta);
-  need(report.seededMeta.indexOf('老王') > 0, '入口应该报第一名：' + report.seededMeta);
+  need(report.seededMeta === '6', '入口徽章应该是 6：' + report.seededMeta);
+  report.seededTitle = await evaluate('document.getElementById("btnOpenBoard").title');
+  need(report.seededTitle.indexOf('共 6 条') > 0 && report.seededTitle.indexOf('老王') > 0,
+    '入口 title 应该报条数与第一名：' + report.seededTitle);
 
   await click('#btnOpenBoard');
   await sleep(350);
@@ -300,14 +310,15 @@ try {
   await click('#btnBoardClose');
   await sleep(300);
 
-  /* ---------- 3. 已署名玩家结算 ---------- */
-  await click('#btnStart');
-  await sleep(900);
+  /* ---------- 3. 已署名玩家结算 ----------
+     页面进来就在玩，这里只要确认确实在荡、没有浮层挡着。 */
   report.afterStartClick = await evaluate(`(() => {
     const g = window.__miner.game;
-    return { phase: g.phase, startShown: document.getElementById('ovStart').classList.contains('show'),
-             timeLeft: +g.timeLeft.toFixed(1), btnText: document.getElementById('btnStart').textContent };
+    return { phase: g.phase, overlays: [...document.querySelectorAll('.overlay.show')].length,
+             timeLeft: +g.timeLeft.toFixed(1) };
   })()`);
+  need(report.afterStartClick.phase === 'swinging' && report.afterStartClick.overlays === 0,
+    '应该已经在玩且没有浮层：' + JSON.stringify(report.afterStartClick));
   await evaluate(`(() => { const g = window.__miner.game; g.score = 12000; g.target = 15000; g.level = 7; g.comboBest = 5; g.timeLeft = 0.04; })()`);
   await sleep(900);
   report.forcedProbe = await evaluate(`(() => {
@@ -354,8 +365,7 @@ try {
   /* ---------- 4. 新玩家：在结算卡上留名 ---------- */
   await evaluate('localStorage.clear(); location.reload();');
   await waitReady();
-  await click('#btnStart');
-  await sleep(900);
+  await sleep(400);
   await evaluate(`(() => { const g = window.__miner.game; g.score = 3000; g.target = 9999; g.level = 2; g.comboBest = 4; g.timeLeft = 0.04; })()`);
   await sleep(900);
   report.newPlayer = await evaluate(`(() => ({
@@ -415,7 +425,7 @@ try {
     name: await evaluate('window.__miner.name'),
   };
   need(report.afterReload.name === '小王', '刷新后名字应该还在');
-  need(report.afterReload.meta.indexOf('小王') > 0, '刷新后入口应该报小王');
+  need(report.afterReload.meta === '1', '刷新后徽章应该还是 1：' + report.afterReload.meta);
   await click('#btnOpenBoard');
   await sleep(350);
   report.persistedRow = await evaluate(`(() => {
@@ -466,8 +476,6 @@ try {
   /* ---------- 6. 中途退出也要留档 ---------- */
   await click('#btnBoardClose');
   await sleep(250);
-  await click('#btnStart');
-  await sleep(700);
   await evaluate(`(() => { const g = window.__miner.game; g.score = 4321; g.level = 3; g.comboBest = 2; })()`);
   await evaluate('Object.defineProperty(document,"hidden",{value:true,configurable:true}); document.dispatchEvent(new Event("visibilitychange"));');
   await sleep(350);
@@ -480,7 +488,8 @@ try {
     return { count: raw.length, quit: last.length,
              score: last.length ? last[0].score : 0,
              meta: document.getElementById('lbMeta').textContent,
-             onStart: document.getElementById('ovStart').classList.contains('show') };
+             playing: window.__miner.game.phase,
+             overlays: [...document.querySelectorAll('.overlay.show')].length };
   })()`);
   need(report.pauseShown, '暂停浮层没弹出来');
   need(report.quitRecord.quit === 1, '中途退出应该留一条 outcome=quit 的记录');
@@ -488,14 +497,15 @@ try {
    * 这条同时守住两件事：退出局也要换算；而且只乘一次。 */
   need(report.quitRecord.score === 8642,
     '退出局没按难度换算（标准 ×2 应为 8642）：' + report.quitRecord.score);
-  need(report.quitRecord.onStart, '退出应该回到开始页');
-  await shot('11-start-after-quit.png');
+  /* 重开 = 原地开新局，不再"回开始页" */
+  need(report.quitRecord.overlays === 0 && report.quitRecord.playing !== 'ready',
+    '重开之后应该已经在玩：' + JSON.stringify(report.quitRecord));
+  await shot('11-after-quit.png');
 
   /* ---------- 7. 同一台设备，第二局换一个名字 ----------
      这是这次改动的核心：一局一枚名字，互不覆盖。
      上一局退出时用的是"大王"（8642 分），这一局改成"阿豪"。 */
-  await click('#btnStart');
-  await sleep(900);
+  await sleep(600);
   await evaluate(`(() => { const g = window.__miner.game; g.score = 5000; g.target = 9999; g.level = 3; g.comboBest = 6; g.timeLeft = 0.04; })()`);
   await sleep(900);
   report.secondRun = await evaluate(`(() => ({
@@ -548,6 +558,58 @@ try {
   need(report.threeRows.length === 3, '榜上应该有三条，实际 ' + report.threeRows.length);
   need(new Set(report.threeRows.map(r => r.ava)).size === 3, '三个名字应该三张脸：' + JSON.stringify(report.threeRows));
   await shot('13-board-three-names.png');
+
+  /* ---------- 8. 榜单能一直往下滑 ----------
+     以前每个榜只渲染前 8 名，滑不动也没得滑。现在列表自己滚，
+     这里要确认三件事：真的渲染了很多人、容器真的能滚、滚到底能看见最后一名。 */
+  const many = [];
+  const tMany = Date.now();
+  for (let i = 0; i < 100; i++) {
+    many.push({
+      id: 'm' + i, name: '矿工' + i, score: 100000 - i * 37, level: 1 + (i % 9),
+      comboBest: i % 20, ts: tMany - i * 60000, preset: 'standard', named: true, avatar: 'dog',
+    });
+  }
+  await evaluate(`localStorage.setItem('naiwa_miner_board_v1', ${JSON.stringify(JSON.stringify(many))}); location.reload();`);
+  await waitReady();
+  await click('#btnOpenBoard');
+  await sleep(600);
+  report.scroll = await evaluate(`(() => {
+    const box = document.getElementById('boardScroll');
+    return {
+      rows: document.querySelectorAll('#boardList .bl-row').length,
+      clientH: box.clientHeight, scrollH: box.scrollHeight,
+      hint: !document.getElementById('boardMore').hidden,
+      badge: document.getElementById('lbMeta').textContent,
+      cardFits: document.querySelector('#ovBoard .ov-card').getBoundingClientRect().bottom
+                <= innerHeight + 1,
+    };
+  })()`);
+  need(report.scroll.badge === '100', '徽章应该是 100 条：' + report.scroll.badge);
+  need(report.scroll.rows >= 20, '榜单应该渲染出远多于 8 行：' + report.scroll.rows);
+  need(report.scroll.scrollH > report.scroll.clientH + 100, '列表应该真的能滚：' + JSON.stringify(report.scroll));
+  need(report.scroll.hint, '下面还有人的时候应该提示下滑');
+  need(report.scroll.cardFits, '榜单卡不该顶出画面');
+  await shot('14-board-scroll-top.png');
+
+  await evaluate(`(() => { const b = document.getElementById('boardScroll'); b.scrollTop = b.scrollHeight; })()`);
+  await sleep(400);
+  report.scrollEnd = await evaluate(`(() => {
+    const rows = [...document.querySelectorAll('#boardList .bl-row')];
+    const last = rows[rows.length - 1];
+    const box = document.getElementById('boardScroll').getBoundingClientRect();
+    return {
+      rank: last.querySelector('.bl-rank').textContent,
+      name: last.querySelector('.bl-who b').textContent,
+      fullyVisible: last.getBoundingClientRect().bottom <= box.bottom + 1,
+      hint: !document.getElementById('boardMore').hidden,
+    };
+  })()`);
+  need(report.scrollEnd.rank === '100', '滚到底应该是第 100 名：' + report.scrollEnd.rank);
+  need(report.scrollEnd.name === '矿工99', '最后一名不对：' + report.scrollEnd.name);
+  need(report.scrollEnd.fullyVisible, '最后一名应该完整露出来');
+  need(!report.scrollEnd.hint, '滚到底之后不该还提示下滑');
+  await shot('15-board-scroll-bottom.png');
 
   fs.writeFileSync(path.join(OUTDIR, 'board-report.json'), JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report, null, 2));

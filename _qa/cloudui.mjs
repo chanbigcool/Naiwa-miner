@@ -119,7 +119,8 @@ async function main() {
   await send('Page.navigate', { url: TARGET });
 
   for (let i = 0; i < 80; i++) {
-    const ok = await evaluate(`!!(window.__miner && window.__miner.game && document.getElementById('btnStart'))`).catch(() => false);
+    /* 开始页没了：就绪 = 自动开局已经在荡钩 */
+    const ok = await evaluate(`!!(window.__miner && window.__miner.game && window.__miner.game.phase !== 'ready')`).catch(() => false);
     if (ok) { break; }
     await sleep(150);
   }
@@ -131,14 +132,18 @@ async function main() {
   await evaluate('window.__miner.refreshCloud()');
   await sleep(500);
 
-  /* 1. 开始页摘要已经切成"全服" */
+  /* 1. 右上角那个条数徽章已经切成"全服" */
   report.debug = await evaluate(`(() => ({
     hasStub: typeof window.MinerCloud,
     loads: window.__stub.loads,
     cloud: window.__miner.cloud,
   }))()`);
-  report.startMeta = await evaluate(`document.getElementById('lbMeta').textContent`);
-  need(/全服/.test(report.startMeta), '开始页摘要没切成全服：' + report.startMeta);
+  report.startMeta = await evaluate(`(() => ({
+    badge: document.getElementById('lbMeta').textContent,
+    title: document.getElementById('btnOpenBoard').title,
+  }))()`);
+  need(report.startMeta.badge === '42', '徽章应该用全服总数 42：' + report.startMeta.badge);
+  need(/全服榜/.test(report.startMeta.title), '按钮说明没切成全服：' + report.startMeta.title);
 
   /* 2. 排行榜展示的是云端那份 */
   await click('#btnOpenBoard');
@@ -175,12 +180,14 @@ async function main() {
     rows: document.querySelectorAll('#boardList li').length,
     empty: !document.getElementById('boardEmpty').hidden,
     meta: document.getElementById('lbMeta').textContent,
+    title: document.getElementById('btnOpenBoard').title,
   }))()`);
   need(/共 0 条/.test(report.emptyCloud.sub), '云榜为空时子标题该写 0 条：' + report.emptyCloud.sub);
   need(report.emptyCloud.rows === 0,
     '云榜为空时不能渲染本机记录，实际渲染了 ' + report.emptyCloud.rows + ' 行');
   need(report.emptyCloud.empty, '云榜为空时应该显示空榜提示');
-  need(/全服/.test(report.emptyCloud.meta), '开始页摘要也该如实说全服为空：' + report.emptyCloud.meta);
+  need(report.emptyCloud.meta === '0', '空榜时徽章应该归零：' + report.emptyCloud.meta);
+  need(/全服榜/.test(report.emptyCloud.title), '按钮说明也该如实说全服为空：' + report.emptyCloud.title);
   await shot('01b-board-cloud-empty.png');
 
   /* 把假后端恢复成有数据的版本，继续后面的用例 */
@@ -200,9 +207,7 @@ async function main() {
 
   /* 4. 结算提交 + 名次来自云端 */
   await click('#btnBoardClose');
-  await sleep(200);
-  await click('#btnStart');
-  await sleep(900);
+  await sleep(400);
   await evaluate(`(() => { const g = window.__miner.game;
     g.score = 15000; g.target = 20000; g.level = 9; g.comboBest = 12; g.timeLeft = 0.04; })()`);
   await sleep(1200);

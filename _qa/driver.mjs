@@ -128,14 +128,16 @@ async function waitReady(maxMs = 30000) {
   while (Date.now() - t0 < maxMs) {
     const ok = await evaluate(`(() => {
       const g = window.__miner && window.__miner.game;
-      const b = document.getElementById("btnStart");
-      return !!(g && b && document.readyState === "complete");
+      /* 开始页已经去掉：资源到齐就自动开局，所以"就绪"= 钩子已经在荡 */
+      return !!(g && document.readyState === "complete" && g.phase !== "ready");
     })()`);
     if (ok) { return Date.now() - t0; }
     await sleep(200);
   }
   throw new Error('等待游戏就绪超时（' + maxMs + 'ms）');
 }
+
+function need(cond, msg) { if (!cond) { throw new Error('断言失败: ' + msg); } }
 
 const report = {};
 try {
@@ -150,17 +152,19 @@ try {
   report.loadMs = await waitReady(30000);
 
   report.title = await evaluate('document.title');
-  /* 开始页改版后不再有十二格图鉴：现在考的是封面三件套
-     —— 体型刻度、两条特殊机制、以及三个难度档位都在。 */
-  report.cover = await evaluate(`(() => ({
-    刻度图: document.querySelectorAll(".scale-row img").length,
-    机制卡: [...document.querySelectorAll(".spec")].map(x => x.querySelector("b").textContent).join("/"),
-    难度档: [...document.querySelectorAll("#preset button")].map(x => x.textContent).join("/"),
-    标题: document.querySelector(".ov-title.hero").textContent.trim(),
-    标题字号: getComputedStyle(document.querySelector(".ov-title.hero")).fontSize,
+  /* 开始页整块删掉了：一进页面就该在矿里，没有任何浮层挡着。
+     难度挪进了暂停卡 —— 那是现在唯一能换档的地方。 */
+  report.boot = await evaluate(`(() => ({
+    有没有开始页: !!document.getElementById('ovStart'),
+    有没有开始键: !!document.getElementById('btnStart'),
+    右上工具: [...document.querySelectorAll('.tools .tool')].map(b => b.id).join('/'),
+    正在玩: window.__miner.game.phase,
+    浮层: [...document.querySelectorAll('.overlay.show')].map(e => e.id).join(',') || '无',
+    排行榜条数: document.getElementById('lbMeta').textContent,
   }))()`);
-  report.startOverlayVisible = await evaluate('document.getElementById("ovStart").classList.contains("show")');
-  report.startBtnText = await evaluate('document.getElementById("btnStart").textContent');
+  need(!report.boot.有没有开始页 && !report.boot.有没有开始键, '开始页/开始键应该已经删掉');
+  need(report.boot.右上工具 === 'btnOpenBoard/btnPause', '右上工具不对：' + report.boot.右上工具);
+  need(report.boot.浮层 === '无', '一进来不该有任何浮层：' + report.boot.浮层);
   report.imagesLoaded = await evaluate(
     '[...document.images].every(i => i.complete && i.naturalWidth > 0)');
   report.brokenImages = await evaluate(
@@ -170,17 +174,25 @@ try {
     return { w: Math.round(r.width), h: Math.round(r.height), ratio: +(r.width/r.height).toFixed(4) };
   })()`);
   report.canvasSize = await evaluate('(() => { const c = document.getElementById("cv"); return { w: c.width, h: c.height }; })()');
-  await shot('01-start.png');
+  await shot('01-boot.png');
 
-  // —— 真实点击「开始挖矿」 ——
-  await clickSelector('#btnStart');
-  await sleep(1200);
+  // —— 难度现在在暂停卡里：开→读→读回 ——
+  await clickSelector('#btnPause');
+  await sleep(350);
+  report.pauseCard = await evaluate(`(() => ({
+    难度档: [...document.querySelectorAll('#preset button')].map(x => x.textContent).join('/'),
+    玩法行数: document.querySelectorAll('.quick-rules li').length,
+    有继续: !!document.getElementById('btnResume'),
+  }))()`);
+  await clickSelector('#btnResume');
+  await sleep(300);
+  await sleep(600);
   report.afterStart = await evaluate(`(() => {
     const g = window.__miner.game;
     return g ? { phase: g.phase, level: g.level, items: g.items.length, target: g.target,
                  timeLeft: +g.timeLeft.toFixed(1), score: g.score } : null;
   })()`);
-  report.startOverlayHidden = await evaluate('!document.getElementById("ovStart").classList.contains("show")');
+  report.noOverlayWhilePlaying = await evaluate('document.querySelectorAll(".overlay.show").length === 0');
   await shot('02-playing.png');
 
   // —— 模拟玩家：随机节奏点击 18 次（固定节奏会跟摆周期发生采样混叠，不真实） ——
@@ -410,7 +422,7 @@ try {
       宽高比: +(r.width / r.height).toFixed(3),
       世界尺寸: g.cfg.WORLD_W + '×' + g.cfg.WORLD_H,
       字号: getComputedStyle(document.getElementById("stage")).fontSize,
-      封面宽度: Math.round(document.querySelector(".ov-card.start").getBoundingClientRect().width),
+      工具条宽: Math.round(document.querySelector(".tools").getBoundingClientRect().width),
     };
   })()`);
   await shot('15-pc-landscape.png');
@@ -428,10 +440,7 @@ try {
   await waitReady(30000);
 
   // —— 暂停（模拟切标签页） ——
-  // 必须先真的开局：在起始页上切标签页本来就不该弹暂停浮层，
-  // 那样断言永远为真、等于没测。
-  await clickSelector('#btnStart');
-  await sleep(800);
+  // 页面一进来就在玩，切走必须弹暂停；这里等它是真的在荡再切。
   report.pauseStarted = await evaluate('window.__miner.game.phase');
   await evaluate('Object.defineProperty(document,"hidden",{value:true,configurable:true}); document.dispatchEvent(new Event("visibilitychange"));');
   await sleep(400);

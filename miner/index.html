@@ -11,8 +11,8 @@
      浏览器会按"启发式缓存"自己算过期时间，期间新代码根本不会下载下来 ——
      表现就是"线上明明更新了，我这台电脑还是老钩子"。
      换 URL 是最干脆的绕开方式：改了前端就顺手把下面这几处 v 一起改掉。 -->
-<meta name="miner-build" content="20261020c">
-<link rel="stylesheet" href="style.css?v=20261020c">
+<meta name="miner-build" content="20261020d">
+<link rel="stylesheet" href="style.css?v=20261020d">
 </head>
 <body>
 <div class="page">
@@ -59,6 +59,26 @@
           </svg>
         </button>
 
+        <!-- 右上：排行榜 / 暂停。
+             都放在"天空"里（这一层没有可抓的东西），不会盖住土层里的宝贝；
+             舞台的点击发射会把这一块排除掉（见 game.js 的 pointerdown）。 -->
+        <div class="tools">
+          <button class="tool" id="btnOpenBoard" type="button" aria-label="打开排行榜">
+            <svg viewBox="0 0 24 24" width="100%" height="100%" aria-hidden="true">
+              <path class="tl-cup" d="M7.4 4h9.2v3.3a4.6 4.6 0 0 1-9.2 0z"/>
+              <path class="tl-line" d="M7.4 5.2H5.1v1.1a3 3 0 0 0 2.7 2.9M16.6 5.2h2.3v1.1a3 3 0 0 1-2.7 2.9M12 12.1v3.2M9 18.2h6"
+                    fill="none" stroke-width="1.7" stroke-linecap="round"/>
+            </svg>
+            <b id="lbMeta">0</b>
+          </button>
+          <button class="tool" id="btnPause" type="button" aria-label="暂停">
+            <svg viewBox="0 0 24 24" width="100%" height="100%" aria-hidden="true">
+              <rect x="7" y="5" width="3.4" height="14" rx="1.1"/>
+              <rect x="13.6" y="5" width="3.4" height="14" rx="1.1"/>
+            </svg>
+          </button>
+        </div>
+
         <!-- 炸药：手里拉着东西时按一下，当场炸掉、绳子立刻回来 -->
         <button class="dyn" id="btnDyn" type="button" aria-label="引爆炸药">
           <span class="dyn-body">
@@ -73,42 +93,14 @@
           <span class="dyn-tip" id="dynTip">拉着东西时按这里（或 B 键）炸药</span>
         </button>
 
-        <!-- ========== 开始 ==========
-             这一屏按"海报"排，不按"说明文档"排：
-             只讲三件事 —— 越大越值钱、天使别碰、钻石必抢。
-             十二格图鉴删掉了：没人会在开始页对着价格表背诵，
-             真正需要的信息是"大 = 值钱但慢"，一条刻度就够。 -->
-        <div class="overlay show" id="ovStart">
-          <div class="ov-card start">
-            <div class="cover-top">
-              <span class="kicker">NAIWA MINER</span>
-              <span class="cover-no">NO.01</span>
-            </div>
-
-            <h1 class="ov-title hero">奶蛙矿工</h1>
-            <p class="hero-tag">甩钩 <i>·</i> 抓蛙 <i>·</i> 凑够分</p>
-
-            <!-- 刻度：三只不同体型的奶蛙排在同一条基线上，越往右越大 -->
-            <div class="scale" aria-hidden="true">
-              <div class="scale-row">
-                <img class="sz1" src="../assets/nai/nai01-blob.webp" alt="">
-                <img class="sz2" src="../assets/nai/nai05-dog.webp" alt="">
-                <img class="sz3" src="../assets/nai/nai08-sumo.webp" alt="">
-              </div>
-              <div class="scale-rule"></div>
-            </div>
-            <p class="scale-note"><b>越大越值钱</b>，也越重、拉得越慢</p>
-
-            <div class="specs">
-              <div class="spec boom">
-                <img src="../assets/nai/nai09-angel.webp" alt="">
-                <span class="spec-txt"><b>天使</b><em>炸弹 −150</em></span>
-              </div>
-              <div class="spec jack">
-                <img src="../assets/nai/nai11-god.webp" alt="">
-                <span class="spec-txt"><b>钻石</b><em>+600 · 加 5 秒</em></span>
-              </div>
-            </div>
+        <!-- ========== 暂停 / 设置 ==========
+             开始页去掉了：打开就开矿。这里成了唯一能喘口气、也能换难度的地方。
+             难度必须在这儿改 —— 换档等于换一局，所以选中就重开，不做"下局生效"
+             这种说了不算的半吊子状态。 -->
+        <div class="overlay" id="ovPause">
+          <div class="ov-card">
+            <div class="ov-title">歇一会儿</div>
+            <p class="ov-sub">切走页面会自动暂停，回来接着挖。</p>
 
             <div class="preset" id="preset">
               <span class="preset-label">难度</span>
@@ -116,28 +108,15 @@
               <button type="button" data-preset="standard" class="on">标准<b>×2</b></button>
               <button type="button" data-preset="hard">硬核<b>×3</b></button>
             </div>
-            <p class="preset-note">结算分 = 局内分 × 倍率 · 关卡与连击不乘</p>
+            <p class="preset-note">换难度会重开一局 · 结算分 = 局内分 × 倍率</p>
             <p class="swing-note" id="swingNote"></p>
 
-            <button class="btn start-btn" id="btnStart" type="button">开始挖矿</button>
-            <p class="keys">空格／点击 放钩 <i>·</i> <b>B</b> 炸药 <i>·</i> 达标 <b>Enter</b> 收工</p>
+            <ul class="quick-rules">
+              <li><b>越大越值钱</b>，也越重、拉回来越慢</li>
+              <li>天使奶蛙是炸弹 <b class="bad">−150</b>；钻石奶蛙 <b class="good">+600</b>，还加 5 秒</li>
+              <li><b>空格</b>／点击放钩 · <b>B</b> 引爆 · 达标后 <b>Enter</b> 收工</li>
+            </ul>
 
-            <div class="start-foot">
-              <span class="best-line">最高 <b id="bestScore">0</b> · 第 <b id="bestLevel">1</b> 关</span>
-              <button class="board-bar" id="btnOpenBoard" type="button">
-                <span class="bb-label">排行榜</span>
-                <span class="bb-meta" id="lbMeta">还没有记录</span>
-                <span class="bb-arrow" aria-hidden="true">→</span>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <!-- ========== 暂停 ========== -->
-        <div class="overlay" id="ovPause">
-          <div class="ov-card">
-            <div class="ov-title">歇一会儿</div>
-            <p class="ov-sub">切走页面会自动暂停，回来接着挖。</p>
             <button class="btn primary big" id="btnResume" type="button">继续</button>
             <button class="btn ghost" id="btnQuit" type="button">重开一局</button>
           </div>
@@ -210,7 +189,14 @@
             </div>
             <p class="board-note">总分榜比的是<b>结算分</b>：局内分 × 难度倍率（轻松 1 / 标准 2 / 硬核 3）。</p>
 
-            <ol class="board-list" id="boardList"></ol>
+            <!-- 列表自己滚，不带着整张卡一起滚：
+                 不然想关掉的时候得先把一百行滑到底。 -->
+            <div class="board-box" id="boardBox">
+              <div class="board-scroll" id="boardScroll">
+                <ol class="board-list" id="boardList"></ol>
+              </div>
+            </div>
+            <p class="board-more" id="boardMore" hidden>下滑看更多 ↓</p>
             <p class="board-empty" id="boardEmpty">榜上还是空的 —— 打完一局就会有一条。</p>
 
             <button class="btn primary" id="btnBoardClose" type="button">回去挖矿</button>
@@ -251,9 +237,9 @@
   </main>
 </div>
 
-<script src="../common/sfx.js?v=20261020c"></script>
-<script src="logic.js?v=20261020c"></script>
-<script src="cloud.js?v=20261020c"></script>
-<script src="game.js?v=20261020c"></script>
+<script src="../common/sfx.js?v=20261020d"></script>
+<script src="logic.js?v=20261020d"></script>
+<script src="cloud.js?v=20261020d"></script>
+<script src="game.js?v=20261020d"></script>
 </body>
 </html>
