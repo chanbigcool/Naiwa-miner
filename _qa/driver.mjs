@@ -150,9 +150,15 @@ try {
   report.loadMs = await waitReady(30000);
 
   report.title = await evaluate('document.title');
-  report.legendItems = await evaluate('document.querySelectorAll("#legend li").length');
-  report.legendSample = await evaluate(
-    '[...document.querySelectorAll("#legend li")].map(li => li.querySelector("b").textContent + " " + li.querySelector("small").textContent).join(" | ")');
+  /* 开始页改版后不再有十二格图鉴：现在考的是封面三件套
+     —— 体型刻度、两条特殊机制、以及三个难度档位都在。 */
+  report.cover = await evaluate(`(() => ({
+    刻度图: document.querySelectorAll(".scale-row img").length,
+    机制卡: [...document.querySelectorAll(".spec")].map(x => x.querySelector("b").textContent).join("/"),
+    难度档: [...document.querySelectorAll("#preset button")].map(x => x.textContent).join("/"),
+    标题: document.querySelector(".ov-title.hero").textContent.trim(),
+    标题字号: getComputedStyle(document.querySelector(".ov-title.hero")).fontSize,
+  }))()`);
   report.startOverlayVisible = await evaluate('document.getElementById("ovStart").classList.contains("show")');
   report.startBtnText = await evaluate('document.getElementById("btnStart").textContent');
   report.imagesLoaded = await evaluate(
@@ -404,8 +410,7 @@ try {
       宽高比: +(r.width / r.height).toFixed(3),
       世界尺寸: g.cfg.WORLD_W + '×' + g.cfg.WORLD_H,
       字号: getComputedStyle(document.getElementById("stage")).fontSize,
-      图例列数: new Set([...document.querySelectorAll("#legend li")]
-        .map(li => Math.round(li.getBoundingClientRect().top))).size,
+      封面宽度: Math.round(document.querySelector(".ov-card.start").getBoundingClientRect().width),
     };
   })()`);
   await shot('15-pc-landscape.png');

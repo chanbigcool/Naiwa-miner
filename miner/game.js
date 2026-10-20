@@ -58,7 +58,6 @@
     btnAgain: document.getElementById('btnAgain'),
     btnShopGo: document.getElementById('btnShopGo'),
 
-    legend: document.getElementById('legend'),
     preset: document.getElementById('preset'),
     bestScore: document.getElementById('bestScore'),
     bestLevel: document.getElementById('bestLevel'),
@@ -159,7 +158,8 @@
    * ================================================================== */
   var BOARD_KEY = 'naiwa_miner_board_v1';
   var NAME_KEY = 'naiwa_miner_name';
-  var AVATAR_KEY = 'naiwa_miner_avatar';
+  var FACES_KEY = 'naiwa_miner_faces_v1';        /* 名字 → 脸。一台机器可以有好几个名字 */
+  var LEGACY_AVATAR_KEY = 'naiwa_miner_avatar';  /* 老版本那枚"设备脸"，读档时并进 FACES */
 
   function loadBoard() {
     try {
@@ -178,39 +178,58 @@
       else { localStorage.removeItem(NAME_KEY); }
     } catch (e) { /* 忽略 */ }
   }
-  function loadAvatar() {
+  /* ---------------- 名字与脸 ----------------
+   * 现在一个名字 = 一个人，**同一台设备可以留好多个名字**（换人玩、
+   * 或者自己开几个号）。所以脸不能再"一台设备一枚"：那样几个名字会顶
+   * 同一张脸，榜上看着像复制粘贴。
+   * 规则：一个名字一张脸。同名永远同脸（重名不换脸），新名字才分配新脸，
+   * 分配时避开榜上和大家已经用掉的那些（见 L.pickAvatar）。 */
+  function loadFaces() {
+    var map = {};
     try {
-      var k = localStorage.getItem(AVATAR_KEY) || '';
-      return L.isAvatar(k) ? k : '';
-    } catch (e) { return ''; }
+      var raw = JSON.parse(localStorage.getItem(FACES_KEY) || '{}');
+      for (var k in raw) {
+        if (Object.prototype.hasOwnProperty.call(raw, k) && L.isAvatar(raw[k])) {
+          map[L.sanitizeName(k)] = raw[k];
+        }
+      }
+      /* 老存档只有一枚"设备脸"：记在当时那个名字上，老玩家的脸不变；
+       * 没有名字就记在默认名上，本机那些空名记录也还是同一张脸。 */
+      var old = localStorage.getItem(LEGACY_AVATAR_KEY) || '';
+      if (L.isAvatar(old)) {
+        var legacyName = L.sanitizeName(localStorage.getItem(NAME_KEY) || '') || L.DEFAULT_NAME;
+        if (!map[legacyName]) { map[legacyName] = old; }
+      }
+    } catch (e) { /* 存不了就每次现分，照样能玩 */ }
+    return map;
   }
-  function saveAvatar() {
-    try {
-      if (myAvatar) { localStorage.setItem(AVATAR_KEY, myAvatar); }
-    } catch (e) { /* 忽略 */ }
+  function saveFaces() {
+    try { localStorage.setItem(FACES_KEY, JSON.stringify(faces)); } catch (e) { /* 忽略 */ }
   }
 
-  /* 这条算不算"我"的：没署名的（本机留下的空名记录）算，
-   * 署了当前这枚名字的也算。别人的名字绝对不动。 */
-  function isMyRecord(r) {
-    return !r.named || (!!myName && r.name === myName);
-  }
+  function faceForName(name) {
+    var n = L.sanitizeName(name) || L.DEFAULT_NAME;
+    if (faces[n]) { return faces[n]; }
 
-  /* 玩家那一枚头像：**只在这台设备上分配一次**，之后每局、每次刷新都用它。
-   *
-   * 为什么不按名字算哈希：名字能改。改名就换脸的话，玩家会以为榜上换了个人，
-   * 而这恰恰是"一个名字对应一个人"最该避免的错觉。
-   * 分配时避开榜上已经出现最多的那几只（见 L.pickAvatar），十个人撞脸也不稀奇。 */
-  function ensureAvatar() {
-    if (myAvatar) { return myAvatar; }
-    var used = [];
+    /* 榜上同名的记录已经带着一张脸（老存档分好的）→ 沿用，别让同名换脸 */
     for (var i = 0; i < board.length; i++) {
-      /* 自己的旧记录不参与"已占用"统计：否则首次留名时会被自己那张临时脸挤开 */
-      if (!isMyRecord(board[i])) { used.push(board[i].avatar); }
+      if (board[i].name === n && L.isAvatar(board[i].avatar)) {
+        faces[n] = board[i].avatar;
+        saveFaces();
+        return faces[n];
+      }
     }
-    myAvatar = L.pickAvatar(used);
-    saveAvatar();
-    return myAvatar;
+
+    var used = [], k;
+    for (var j = 0; j < board.length; j++) {
+      if (board[j].name !== n) { used.push(board[j].avatar); }
+    }
+    for (k in faces) {
+      if (Object.prototype.hasOwnProperty.call(faces, k) && k !== n) { used.push(faces[k]); }
+    }
+    faces[n] = L.pickAvatar(used);
+    saveFaces();
+    return faces[n];
   }
 
   /* 头像的 HTML。底色用这只蛙在矿区里的 tint —
@@ -236,8 +255,8 @@
   }
 
   var board = loadBoard();
-  var myName = loadName();
-  var myAvatar = loadAvatar();
+  var myName = loadName();       /* 上一次用的名字，只当"下一局的默认值" */
+  var faces = loadFaces();
   var recordSeq = 0;
   var lastRecordId = '';        // 最近一局那条（本机榜上找不到就是没挤进去）
   var lastRec = null;           // 最近一局那条记录本身（云端榜不按本机榜裁，得单独留）
@@ -289,9 +308,18 @@
    * 换算只发生一次 —— 记录里存的就是结算分，读档不会再乘一遍。 */
   function recordRun(outcome) {
     if (!game) { return null; }
-    if (game.score <= 0 && game.comboBest <= 0) { return null; }
+
+    /* 空局（0 分 0 连击）不占榜位，也不能顺手把"上一局那条"当成本局：
+     * 结算卡会显示名次，拿旧记录充数就成了一屏假数据。 */
+    if (game.score <= 0 && game.comboBest <= 0) {
+      lastRec = null;
+      lastRecordId = '';
+      return null;
+    }
 
     var now = Date.now();
+    /* 先按"上一局的名字"落一条：玩家在结算卡上改名字的话，
+     * 改的是这一条（见 claimName），不会波及任何历史记录。 */
     var rec = L.makeRecord({
       id: now.toString(36) + '-' + (++recordSeq).toString(36),
       name: myName || L.DEFAULT_NAME,
@@ -301,7 +329,7 @@
       preset: game.preset,
       ts: now,
       named: !!myName,
-      avatar: ensureAvatar(),
+      avatar: faceForName(myName || L.DEFAULT_NAME),
       outcome: outcome,
     });
     board = L.insertRecord(board, rec, L.BOARD_LIMIT);
@@ -309,61 +337,116 @@
     // 弱成绩可能一进去就被裁掉，只有真在榜上才算"我的这一条"
     lastRecordId = L.rankOf(board, rec.id, 'score') > 0 ? rec.id : '';
     lastRec = rec;
+    pendingRec = rec;
     refreshLbMeta();
 
-    /* 云端那一份照传，但**不改变本机记录的去留**：
-     * 本机榜仍然是离线时的兜底，云端只是让别的玩家看得见。
-     * 没名字时 submit 会把这条压进队列，等 setName 之后补传。 */
-    if (CLOUD) {
-      CLOUD.submit(rec, myName).then(function (res) {
-        if (res && res.ok) { refreshCloud(); }
-      });
-    }
+    /* 中途退出没有结算卡，名字不会变 —— 当场就传。
+     * 卡关的那种先压着：等玩家在结算卡上把名字定下来再传，
+     * 否则云端会先收到旧名字，而云端只增不改，改不回来。 */
+    if (outcome === 'quit') { submitPending(); }
     return rec;
   }
 
-  /* 起名 / 改名。
+  /* ---------------- 上报云端 ----------------
+   * 一局只传一次；传成功之后这一条的名字就定格了（云端只增不改）。
+   * 传不上去（断网 / 没名字）不影响本机榜，cloud.js 自己会排队。 */
+  var pendingRec = null;         // 这一局还没传的那条
+  var submittedRunId = '';       // 已经传成功的那条（超过它就定格）
+
+  function submitPending() {
+    if (!CLOUD || !pendingRec) { return; }
+    var rec = pendingRec;
+    if (submittedRunId === rec.id) { return; }
+    CLOUD.submit(rec, rec.named ? rec.name : '').then(function (res) {
+      if (res && res.ok) {
+        submittedRunId = rec.id;
+        refreshCloud();
+        if (el.ovOver && ovShown(el.ovOver)) { paintOverBoard(); }
+      }
+    });
+  }
+
+  /* 留名 / 改这一局的名字。
    *
-   * 归属规则：**没署名的 + 旧名字的，都算"你"**，一起改。
-   * 不这么做的话，第一次起名之后榜上会剩一堆"奶蛙矿工"，看起来像别人；
-   * 而把**别人的**名字也改掉更糟（一台设备两三个人玩是常事）。
-   * 所以只认"未署名"和"我上一个名字"这两种。 */
-  function setName(raw) {
+   * **只改本局那一条**，绝不回写历史 —— 一台设备每局都可以留不同的名字，
+   * 改一次名就把旧成绩全搬过去的话，一台机器永远只能有一个名字。
+   * 名字同时记成"下一局的默认值"，不用每局重打。 */
+  function claimName(raw) {
     var n = L.sanitizeName(raw);
     if (!n) { return false; }
-    var old = myName;
-    /* 先把脸定下来：用旧名算"我"的范围，否则刚改的新名会把旧记录甩出去 */
-    var face = ensureAvatar();
+    var rec = lastRec || currentRecord();
+    if (!rec) { return false; }
+    /* 已经传上全服榜的那条不让改：云端改不回来，改了就成了"榜上一个名、
+     * 本机另一个名"。报错返回，调用方会把输入框复原。 */
+    if (CLOUD && CLOUD.available() && submittedRunId === rec.id) { return false; }
+
     myName = n;
     saveName();
 
-    var patched = [];
-    for (var i = 0; i < board.length; i++) {
-      var r = board[i];
-      var mine = !r.named || (old && r.name === old);
-      if (!mine) { continue; }
-      /* 名字没变、脸也对得上，就不要再写一遍 */
-      if (r.name === n && r.named && r.avatar === face) { continue; }
-      var c = copyRec(r);
-      c.name = n; c.named = true;
-      /* 留名 = 认领：之前按"奶蛙矿工"哈希回填的临时脸，统一换成你的那一枚。
-       * 否则同一个人会以两三张不同的脸上榜，看着像好几号人。 */
-      c.avatar = face;
-      patched.push(c);
-    }
-    for (var j = 0; j < patched.length; j++) {
-      board = L.insertRecord(board, patched[j], L.BOARD_LIMIT);
-    }
-    if (patched.length) { saveBoard(); }
-    refreshLbMeta();
+    var c = copyRec(rec);
+    c.name = n;
+    c.named = true;
+    c.avatar = faceForName(n);
+    board = L.insertRecord(board, c, L.BOARD_LIMIT);
+    saveBoard();
 
-    /* 起了名，之前攒着的成绩才终于能上榜 —— 名字是上榜的门票。
-     * 云端是"只增不改"的，所以改名不会追溯已经传上去的旧记录，
-     * 那些记录留的是当时的名字，这在公共榜上是诚实的做法。 */
+    lastRec = c;
+    lastRecordId = L.rankOf(board, c.id, 'score') > 0 ? c.id : '';
+    if (pendingRec && pendingRec.id === c.id) { pendingRec = c; }
+
+    refreshLbMeta();
+    /* 之前匿名攒在队列里的成绩，这时才有名字可发 */
     if (CLOUD) {
-      CLOUD.flush(myName).then(function (n) {
-        if (n > 0) { refreshCloud(); }
-      });
+      CLOUD.flush(n).then(function (k) { if (k > 0) { refreshCloud(); } });
+    }
+    submitPending();
+    return true;
+  }
+
+  /* 排行榜里那个输入框：改的是**下一局的默认名字**。
+   *
+   * 已经署过名的历史一条都不动 —— 这是"同一台设备可以留不同名字"的前提。
+   * 但本机上那些**从来没署过名**的空记录算无主：顺手认领成这个名字，
+   * 免得第一局忘了起名，成绩就永远挂在"奶蛙矿工"底下。 */
+  function setDefaultName(raw) {
+    var n = L.sanitizeName(raw);
+    if (!n) { return false; }
+
+    myName = n;
+    saveName();
+    var face = faceForName(n);
+
+    var patches = [], i;
+    for (i = 0; i < board.length; i++) {
+      if (board[i].named) { continue; }
+      var c = copyRec(board[i]);
+      c.name = n;
+      c.named = true;
+      c.avatar = face;
+      patches.push(c);
+    }
+    for (i = 0; i < patches.length; i++) {
+      board = L.insertRecord(board, patches[i], L.BOARD_LIMIT);
+    }
+    if (patches.length) {
+      saveBoard();
+      /* 未署名的这一局可能正是 lastRec，把它换成认领后的版本 */
+      if (lastRec && !lastRec.named) {
+        for (i = 0; i < patches.length; i++) {
+          if (patches[i].id === lastRec.id) { lastRec = patches[i]; }
+        }
+      }
+      if (pendingRec && !pendingRec.named) {
+        for (i = 0; i < patches.length; i++) {
+          if (patches[i].id === pendingRec.id) { pendingRec = patches[i]; }
+        }
+      }
+    }
+
+    if (el.boardAva) { fillAva(el.boardAva, face); }
+    refreshLbMeta();
+    if (CLOUD) {
+      CLOUD.flush(n).then(function (k) { if (k > 0) { refreshCloud(); } });
     }
     return true;
   }
@@ -416,6 +499,28 @@
       im.src = src;
       IMG[k] = im;
     });
+  }
+
+  /* 立绘本身是浅色系，光靠描边区分不出来"这件是炸弹 / 这件最贵"。
+   * 这里用一张离屏画布把颜色压进原有像素：只在 alpha>0 的地方上色
+   * （source-atop），边缘和镂空都不会被糊掉，也不用改素材。
+   * 结果按 类型+颜色 缓存，之后每帧只是一次 drawImage。 */
+  var TINT = {};
+  function tinted(type, rgb, alpha) {
+    var key = type + '|' + rgb + '|' + alpha;
+    if (TINT[key]) { return TINT[key]; }
+    var base = IMG[type];
+    if (!base || !base.complete || !base.naturalWidth) { return null; }   // 图还没到，别缓存这个失败
+    var s = Math.max(base.naturalWidth, base.naturalHeight);
+    var c = document.createElement('canvas');
+    c.width = s; c.height = s;
+    var g = c.getContext('2d');
+    g.drawImage(base, (s - base.naturalWidth) / 2, (s - base.naturalHeight) / 2);
+    g.globalCompositeOperation = 'source-atop';
+    g.fillStyle = 'rgba(' + rgb + ',' + alpha + ')';
+    g.fillRect(0, 0, s, s);
+    TINT[key] = c;
+    return c;
   }
 
   /* ============================ 布局与尺寸 ============================ */
@@ -770,24 +875,63 @@
      * 在土里非常容易认错。这一圈光晕就是为了"别抓错" —— 不是彩色底板，只勾个边。 */
     if (it.isAngel) {
       var pulse = 0.5 + 0.5 * Math.sin((t || 0) * 4.2 + it.id);
-      var rad = it.size * (0.50 + pulse * 0.08);
+      var rad = it.size * (0.54 + pulse * 0.10);
       var gg = ctx.createRadialGradient(0, 0, it.size * 0.26, 0, 0, rad);
       gg.addColorStop(0, 'rgba(255, 90, 90, 0)');
-      gg.addColorStop(0.7, 'rgba(255, 72, 72, ' + (0.20 + pulse * 0.16).toFixed(3) + ')');
-      gg.addColorStop(1, 'rgba(255, 72, 72, 0)');
+      gg.addColorStop(0.68, 'rgba(255, 58, 46, ' + (0.30 + pulse * 0.22).toFixed(3) + ')');
+      gg.addColorStop(1, 'rgba(255, 58, 46, 0)');
       ctx.fillStyle = gg;
       ctx.beginPath();
       ctx.arc(0, 0, rad, 0, 6.2832);
       ctx.fill();
 
-      ctx.strokeStyle = 'rgba(226, 72, 63, ' + (0.30 + pulse * 0.32).toFixed(3) + ')';
-      ctx.lineWidth = 3.5;
-      ctx.setLineDash([9, 7]);
-      ctx.lineDashOffset = -(t || 0) * 26;
+      /* 一道贴边的暗红，让整团"烧起来"：只有光晕没有边，远看还是浅色的一坨。 */
+      ctx.strokeStyle = 'rgba(186, 32, 24, ' + (0.22 + pulse * 0.18).toFixed(3) + ')';
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.arc(0, 0, it.size * 0.47, 0, 6.2832);
+      ctx.stroke();
+
+      ctx.strokeStyle = 'rgba(226, 62, 50, ' + (0.42 + pulse * 0.34).toFixed(3) + ')';
+      ctx.lineWidth = 4;
+      ctx.setLineDash([10, 7]);
+      ctx.lineDashOffset = -(t || 0) * 30;
       ctx.beginPath();
       ctx.arc(0, 0, it.size * 0.45, 0, 6.2832);
       ctx.stroke();
       ctx.setLineDash([]);
+    }
+
+    /* 钻石：一圈慢转的金色光芒 + 脉动光晕。
+     * 它是全场最贵的一件，混在土里必须一眼认出来；同样不铺彩色底板，
+     * 只加"光"，轮廓还是立绘自己的轮廓。 */
+    if (it.type === 'god') {
+      var gp = 0.5 + 0.5 * Math.sin((t || 0) * 2.4 + it.id);
+      ctx.save();
+      ctx.rotate((t || 0) * 0.32 + it.id);
+      for (var ri = 0; ri < 8; ri++) {
+        ctx.rotate(6.2832 / 8);
+        var len = it.size * (0.52 + gp * 0.09);
+        var rg = ctx.createLinearGradient(0, 0, 0, -len);
+        rg.addColorStop(0, 'rgba(255, 240, 168, ' + (0.30 + gp * 0.18).toFixed(3) + ')');
+        rg.addColorStop(1, 'rgba(255, 196, 40, 0)');
+        ctx.fillStyle = rg;
+        ctx.beginPath();
+        ctx.moveTo(-it.size * 0.05, -it.size * 0.28);
+        ctx.lineTo(0, -len);
+        ctx.lineTo(it.size * 0.05, -it.size * 0.28);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+
+      var halo = ctx.createRadialGradient(0, 0, it.size * 0.18, 0, 0, it.size * 0.70);
+      halo.addColorStop(0, 'rgba(255, 220, 110, ' + (0.20 + gp * 0.14).toFixed(3) + ')');
+      halo.addColorStop(1, 'rgba(255, 190, 40, 0)');
+      ctx.fillStyle = halo;
+      ctx.beginPath();
+      ctx.arc(0, 0, it.size * 0.70, 0, 6.2832);
+      ctx.fill();
     }
 
     /* 只画本体：不再铺彩色底板。
@@ -801,7 +945,10 @@
 
     // 奶蛙立绘
     var im = IMG[it.type];
-    if (im && im.complete && im.naturalWidth) {
+    /* 炸弹压一层红、钻石压一层金：光晕负责"远处一眼"，染色负责"近处实心"。 */
+    if (it.isAngel) { im = tinted('angel', '206, 30, 22', 0.40) || im; }
+    else if (it.type === 'god') { im = tinted('god', '255, 178, 26', 0.16) || im; }
+    if (im && im.complete !== false && (im.naturalWidth || im.width)) {
       var s = it.size;
       ctx.drawImage(im, -s / 2, -s / 2 + it.size * 0.03, s, s);
     } else {
@@ -1163,11 +1310,11 @@
     var rank = 0;
     if (rec) { rank = live ? cloudRankOf(rec) : L.rankOf(board, rec.id, 'score'); }
     var total = live ? cloudCount : board.length;
-    var needName = !myName;
+    /* 传上云端的这一条名字已经定格：云端只增不改，本机再改就和榜上对不上了 */
+    var locked = !!rec && !!submittedRunId && submittedRunId === rec.id && live;
 
-    /* 这一局的脸跟着记录走；没记录（没挤进榜）也把"你的脸"亮出来，
-     * 让玩家知道下次上榜顶的是哪一张。 */
-    fillAva(el.overAva, rec && rec.avatar ? rec.avatar : ensureAvatar());
+    /* 这一局的脸跟着记录走；没记录（没挤进榜）也把"下一局的脸"亮出来。 */
+    fillAva(el.overAva, rec && rec.avatar ? rec.avatar : faceForName(myName || L.DEFAULT_NAME));
 
     el.overLb.classList.toggle('podium', rank === 1);
     el.overRankBadge.className = 'lb-badge' +
@@ -1175,31 +1322,38 @@
 
     if (!rank) {
       el.overRankBadge.textContent = live ? '前 50 外' : '未上榜';
-      if (live) {
-        el.overRankTxt.textContent = needName
-          ? '起个名才会上榜 —— 全服榜按名字认人。'
-          : '这局没进全服前 50。';
+      if (!rec) {
+        el.overRankTxt.textContent = '这局没打出成绩，先不上榜。';
+      } else if (live) {
+        el.overRankTxt.textContent = rec.named
+          ? '这局没进全服前 50。'
+          : '起个名才会上榜 —— 全服榜按名字认人。';
       } else {
         el.overRankTxt.textContent = '这局没挤进前 ' + L.BOARD_LIMIT + ' 条。';
       }
-      el.overNameRow.hidden = !needName;
-      if (needName) { el.overNameHint.textContent = '最多 8 个字 · 上榜后所有玩家可见。'; }
-      else { el.overNameHint.textContent = '榜上只留前 50，多挖几钩就进来了。'; }
-      return;
+    } else {
+      el.overRankBadge.textContent = '#' + rank;
+      el.overRankTxt.innerHTML = (lastRunBest && rank === 1)
+        ? (live ? '全服第 <b>1</b> 名 · 新纪录！' : '本机第 <b>1</b> 名 · 新纪录！')
+        : ((live ? '全服第 <b>' : '本机第 <b>') + rank + '</b> 名 · 共 <b>' + fmt(total) + '</b> 条');
     }
 
-    el.overRankBadge.textContent = '#' + rank;
-    el.overRankTxt.innerHTML = (lastRunBest && rank === 1)
-      ? (live ? '全服第 <b>1</b> 名 · 新纪录！' : '本机第 <b>1</b> 名 · 新纪录！')
-      : ((live ? '全服第 <b>' : '本机第 <b>') + rank + '</b> 名 · 共 <b>' + fmt(total) + '</b> 条');
-
-    el.overNameRow.hidden = !needName;
-    if (needName) {
-      el.overNameHint.textContent = '最多 8 个字 · 上榜后所有玩家可见。';
-    } else if (live) {
-      el.overNameHint.innerHTML = '以「<b>' + esc(myName) + '</b>」出现在全服榜上 · 排名实时刷新。';
+    /* 名字行：**每一局都让改**，这就是"同一台设备能留不同名字"的入口。
+     * 只有两种情况不显示 —— 这局没记录（没东西可署名），或者已经传上全服榜。 */
+    var canName = !!rec && !locked;
+    el.overNameRow.hidden = !canName;
+    if (canName) {
+      if (document.activeElement !== el.overNameInput) {
+        el.overNameInput.value = rec.named ? rec.name : (myName || '');
+      }
+      el.btnSaveName.textContent = rec.named ? '改这条' : '上榜';
+      el.overNameHint.textContent = rec.named
+        ? '换名字只改这一条，旧成绩不动 · 最多 8 个字'
+        : '留个名，这条就算你的 · 最多 8 个字';
+    } else if (locked) {
+      el.overNameHint.innerHTML = '已以「<b>' + esc(rec.name) + '</b>」上榜 · 名字定格，下一局可以换';
     } else {
-      el.overNameHint.innerHTML = '以「<b>' + esc(myName) + '</b>」上榜 · 名字只存本机，下次自动用。';
+      el.overNameHint.textContent = live ? '全服榜只留前 50。' : '榜上只留前 ' + L.BOARD_LIMIT + ' 条。';
     }
   }
 
@@ -1213,11 +1367,13 @@
   }
 
   function openBoard(from) {
+    /* 从结算卡进榜，等于"这局看完了"：先把这一条按当前名字传上去 */
+    if (from === el.ovOver) { submitPending(); }
     boardBack = from || null;
     boardKey = 'score';                 // 每次打开都回到总分榜
     el.boardNameInput.value = myName || '';
-    el.boardNameNote.textContent = myName ? '改完自动保存' : '起个名，下次自动用';
-    fillAva(el.boardAva, ensureAvatar());
+    el.boardNameNote.textContent = myName ? '只改下一局' : '起个名，下一局就用它';
+    fillAva(el.boardAva, faceForName(myName || L.DEFAULT_NAME));
     paintBoardSub();
     renderBoard();
     show(el.ovBoard);
@@ -1423,6 +1579,8 @@
 
   function start() {
     if (!assetsReady) { return; }
+    /* 上一局如果在结算卡上没点"上榜"就走了，名字用的是默认值 —— 这时才传 */
+    submitPending();
     if (SFX) { SFX.init(); }
     newRun();
     fit();
@@ -1559,7 +1717,7 @@
 
   function commitBoardName() {
     var raw = el.boardNameInput.value;
-    if (!setName(raw)) {
+    if (!setDefaultName(raw)) {
       el.boardNameInput.value = myName || '';
       el.boardNameNote.textContent = '名字不能空着';
       el.boardNameInput.classList.add('bad');
@@ -1576,11 +1734,11 @@
     if (ev.key === 'Enter') { ev.preventDefault(); commitBoardName(); el.boardNameInput.blur(); }
   });
 
-  /* 结算卡上的"上榜"：名字只在这里输入一次，之后每局自动沿用。 */
+  /* 结算卡上的"上榜"：改的是**这一条**。名字会记成下一局的默认值，
+   * 但绝不会回写之前任何一局 —— 一台设备可以每局换一个名字。 */
   function submitOverName() {
-    if (setName(el.overNameInput.value)) {
+    if (claimName(el.overNameInput.value)) {
       if (SFX) { SFX.good(3); }
-      el.overNameInput.value = '';
       paintOverBoard();
       return true;
     }
@@ -1630,6 +1788,9 @@
   /* 切走标签页 → 自动暂停 */
   document.addEventListener('visibilitychange', function () {
     if (document.hidden) {
+      /* 切走 / 关页之前把没传的那一局交出去：结算卡上的名字
+       * 本来要等"再来一局"才传，人走了就丢了。 */
+      submitPending();
       if (game && !paused && !anyOverlayShown()) {
         paused = true;
         show(el.ovPause);
@@ -1638,54 +1799,16 @@
       lastT = 0;                              // 丢掉离开这段时间
     }
   });
+  window.addEventListener('pagehide', submitPending);
 
   window.addEventListener('resize', fit);
   window.addEventListener('orientationchange', function () { setTimeout(fit, 120); });
-
-  /* ============================ 图鉴 ============================ */
-  /* 缩略图按体型缩放 —— 图鉴本身就要教会玩家"越大越值钱"，
-   * 所以不能所有缩略图一样大（那等于把这个线索藏了起来）。
-   * 用图片百分比而不是盒子尺寸：盒子统一，网格才不会被撑得东倒西歪。 */
-  function legendThumbPercent(size) {
-    var lo = L.ITEMS.blob.size, hi = L.ITEMS.god.size;
-    var t = Math.max(0, Math.min(1, (size - lo) / (hi - lo)));
-    return Math.round(46 + t * 54);           // 小石子 46% → 钻石 100%
-  }
-
-  function buildLegend() {
-    var html = '';
-    L.LEGEND_ORDER.forEach(function (type) {
-      var d = L.ITEMS[type];
-      var val;
-      if (d.value instanceof Array) { val = d.value[0] + '~' + d.value[1]; }
-      else { val = (d.value > 0 ? '+' : '') + d.value; }
-
-      var kind = d.value < 0 ? 'minus' : 'plus';
-      var note = val;
-      if (d.isStone) { note = val + ' · 不算连击'; }
-      if (d.timeBonus) { note = val + ' · 加时'; }
-      if (d.isAngel) { note = val + ' · 别碰'; }
-
-      var thumb;
-      if (d.img) {
-        thumb = '<span class="thumb"><img src="../assets/nai/' + d.img + '.webp" alt="" ' +
-          'style="width:' + legendThumbPercent(d.size) + '%;height:' + legendThumbPercent(d.size) + '%"></span>';
-      } else {
-        thumb = '<span class="thumb rock"></span>';
-      }
-
-      html += '<li' + (d.value < 0 ? ' class="danger"' : '') + '>' + thumb +
-        '<div class="txt"><b>' + d.name + '</b><small class="' + kind + '">' + note + '</small></div></li>';
-    });
-    el.legend.innerHTML = html;
-  }
 
   /* ============================ 启动 ============================ */
   el.btnStart.textContent = '加载奶蛙中…';
   preload();
   newRun();                 // 先建一局（ready 态）当开始页的背景，别让舞台空着
   fit();
-  buildLegend();
   refreshBestLine();
   refreshLbMeta();
   paintBoardSub();
@@ -1706,7 +1829,7 @@
     get layout() { return game ? game.cfg.LAYOUT : null; },
     get board() { return board; },
     get name() { return myName; },
-    get avatar() { return myAvatar; },
+    get avatar() { return faceForName(myName || L.DEFAULT_NAME); },
     get cloud() {
       return { state: cloudState, count: cloudCount, rows: cloudRows,
                pending: CLOUD ? CLOUD.pending() : 0 };

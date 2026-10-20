@@ -210,17 +210,41 @@ async function main() {
     over: document.getElementById('ovOver').classList.contains('show'),
     rank: document.getElementById('overRankTxt').textContent,
     badge: document.getElementById('overRankBadge').textContent,
+    prefill: document.getElementById('overNameInput').value,
+    nameRowHidden: document.getElementById('overNameRow').hidden,
     submitted: window.__stub.submitted.slice(),
   }))()`);
   need(report.settle.over, '结算面板没弹出来');
-  need(report.settle.submitted.length === 1, '应该提交一条：' + JSON.stringify(report.settle.submitted));
-  need(report.settle.submitted[0].name === '阿包', '提交的名字不对：' + report.settle.submitted[0].name);
+  /* 名字还没确认，就先别传 —— 云端只增不改，传早了就只能顶着旧名字。
+   * 这是"一台设备每局换名字"能成立的关键。 */
+  need(report.settle.submitted.length === 0,
+    '名字还没确认就传上去了：' + JSON.stringify(report.settle.submitted));
+  need(!report.settle.nameRowHidden, '结算卡上应该能改这一局的名字');
+  need(report.settle.prefill === '阿包', '名字框应预填上一局的名字，实际 ' + report.settle.prefill);
+  await shot('02-over-cloud.png');
+
+  /* 在结算卡上确认名字 → 这时候才提交，而且提交的就是这个名字 */
+  await click('#btnSaveName');
+  await sleep(600);
+  report.settleAfterName = await evaluate(`(() => ({
+    rank: document.getElementById('overRankTxt').textContent,
+    badge: document.getElementById('overRankBadge').textContent,
+    nameRowHidden: document.getElementById('overNameRow').hidden,
+    hint: document.getElementById('overNameHint').innerText.trim(),
+    submitted: window.__stub.submitted.slice(),
+  }))()`);
+  need(report.settleAfterName.submitted.length === 1,
+    '确认名字后应该提交一条：' + JSON.stringify(report.settleAfterName.submitted));
+  need(report.settleAfterName.submitted[0].name === '阿包',
+    '提交的名字不对：' + report.settleAfterName.submitted[0].name);
   /* 局内 15000、标准 ×2 → 全服榜上必须是 30000。
    * 云端只存"结算分"，倍率在写记录那一刻就算完了，读的人不用再乘。 */
-  need(report.settle.submitted[0].score === 30000,
-    '提交的应该是结算分（15000 × 2 = 30000）：' + report.settle.submitted[0].score);
-  need(/全服/.test(report.settle.rank), '结算卡名次没走云端：' + report.settle.rank);
-  await shot('02-over-cloud.png');
+  need(report.settleAfterName.submitted[0].score === 30000,
+    '提交的应该是结算分（15000 × 2 = 30000）：' + report.settleAfterName.submitted[0].score);
+  need(/全服/.test(report.settleAfterName.rank), '结算卡名次没走云端：' + report.settleAfterName.rank);
+  /* 已经上全服榜的那条不许再改：改了本机和榜上就对不上 */
+  need(report.settleAfterName.nameRowHidden, '传上云端之后名字应该定格');
+  await shot('03-over-cloud-submitted.png');
 
   report.ok = true;
   console.log(JSON.stringify(report, null, 2));

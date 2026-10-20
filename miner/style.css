@@ -266,44 +266,102 @@ body {
 }
 .ov-title.win { background: linear-gradient(100deg, #4fc78a, #1d9e75 60%, #0f6e56); -webkit-background-clip: text; background-clip: text; }
 .ov-title.lose { background: linear-gradient(100deg, #ff8f6b, #e14b4b 60%, #a32d2d); -webkit-background-clip: text; background-clip: text; }
+
+/* ---------- 开始页：海报式排版 ----------
+   这一屏不按"说明文档"排，按封面排：左对齐、直角、粗墨线、
+   错位实心投影。圆角卡片留给暂停/结算那种"对话框"。
+   信息只讲三条：越大越值钱、天使别碰、钻石必抢。 */
+.ov-card.start {
+  position: relative; text-align: left;
+  font-size: 1.08em;          /* 封面整体提一档，别缩成一张小对话框 */
+  width: 100%; max-width: 32em; margin: 0 auto;   /* 横屏别铺满整块舞台 */
+  padding: 1.35em 1.1em 1.1em;
+  border-radius: 2px;
+  border: 3px solid var(--ink);
+  background: linear-gradient(180deg, #fffdf8, #fff6e8 60%, #ffeed7);
+  box-shadow: 7px 7px 0 rgba(74, 51, 37, .92);
+  clip-path: polygon(0 0, calc(100% - 22px) 0, 100% 22px, 100% 100%, 0 100%);
+}
+/* 顶部一条斜纹带，像包装盒上的警示条；
+   右上角被 clip-path 切掉，斜口正好收边 */
+.ov-card.start::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 5px;
+  background: repeating-linear-gradient(90deg,
+    var(--brand) 0 16px, #ffd24a 16px 32px);
+}
+.cover-top {
+  display: flex; align-items: center; justify-content: space-between;
+  margin: .35em 0 .15em;
+}
+.kicker { font-size: .6em; font-weight: 800; letter-spacing: .3em; color: var(--ink-soft); }
+.cover-no {
+  font-size: .58em; font-weight: 800; letter-spacing: .1em;
+  color: #ffe27a; background: var(--ink); padding: .18em .5em;
+}
+
+/* 标题：奶龙那身亮黄。底色是奶油白，纯黄会飘，
+   所以描一圈深琥珀边；描边做细，厚了会把渐变吃掉。 */
+.ov-title.hero {
+  font-size: 2.95em; font-weight: 900; letter-spacing: 0; line-height: 1;
+  margin: .12em 0 .18em;
+  background: linear-gradient(166deg, #fff3a6 0%, #ffdd4e 34%, #ffbf1c 66%, #ef8500 100%);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+  -webkit-text-stroke: .035em #cf7400;
+  filter: drop-shadow(0 .025em 0 rgba(207, 116, 0, .85))
+          drop-shadow(0 .07em .1em rgba(176, 96, 0, .28));
+}
+.hero-tag {
+  margin: 0 0 1.05em; font-size: .78em; font-weight: 700;
+  letter-spacing: .16em; color: var(--ink);
+}
+.hero-tag i { font-style: normal; color: var(--brand); padding: 0 .3em; }
+
 .ov-sub { margin: .5em 0 .75em; font-size: .84em; line-height: 1.66; color: var(--ink-soft); }
 
-/* 图鉴 */
-.legend-lead {
-  margin: 0 0 .45em; font-size: .76em; line-height: 1.6;
-  color: var(--ink-soft); text-align: left;
+/* 体型刻度：三只不同大小的奶蛙踩在同一条基线上，
+   下面一排刻度线当尺子用。不讲价格表，只讲"往右更大、更值钱、更慢"。 */
+.scale {
+  margin: 0 0 .35em; padding: .6em .6em .3em;
+  border: 2px solid var(--ink); background: #fffdf7;
 }
-.legend-lead b { color: var(--gold-dark); }
-.legend {
-  display: grid; grid-template-columns: 1fr 1fr; gap: .3em .5em;
-  margin: 0 0 .55em; text-align: left;
+.scale-row {
+  display: flex; align-items: flex-end; justify-content: space-around;
+  gap: .3em; padding-bottom: .1em;
 }
-.legend li {
-  display: flex; align-items: center; gap: .45em;
-  padding: .28em .4em; border-radius: .55em;
-  background: rgba(255, 255, 255, .8);
-  box-shadow: 0 1px 3px rgba(126, 84, 44, .1);
+.scale-row img { display: block; object-fit: contain; }
+.scale-row .sz1 { width: 1.55em; height: 1.55em; }
+.scale-row .sz2 { width: 2.55em; height: 2.55em; }
+.scale-row .sz3 { width: 3.95em; height: 3.95em; }
+/* 底下一根箭头：往右 = 更大、更值钱、更慢。
+   不用把价格写出来，箭头本身就是那句话。 */
+.scale-rule { position: relative; height: .7em; margin-top: .4em; }
+.scale-rule::before {
+  content: ''; position: absolute; left: 0; right: .5em; top: 50%;
+  height: 2px; background: rgba(74, 51, 37, .22);
 }
-.legend .thumb {
-  flex: 0 0 auto; width: 1.9em; height: 1.9em;
-  display: grid; place-items: center; border-radius: .5em;
-  overflow: hidden;
-  /* 图例在白卡上，立绘偏浅色，不垫底会糊成一片。
-     这里只垫一层极淡的中性暖灰（不是彩色底板），只为让轮廓看得清。 */
-  background: rgba(74, 51, 37, .075);
+.scale-rule::after {
+  content: ''; position: absolute; right: 0; top: 50%; transform: translateY(-50%);
+  border-left: .5em solid rgba(74, 51, 37, .34);
+  border-top: .3em solid transparent; border-bottom: .3em solid transparent;
 }
-/* 盒子里图片的大小按体型走（JS 给 width/height 百分比）：越值钱的那格填得越满 */
-.legend .thumb img { object-fit: contain; }
-.legend .thumb.rock {
-  background: radial-gradient(ellipse at 40% 32%, #b9b3a6, #6f6a5f 78%) !important;
-  border-radius: 46% 54% 52% 48% / 52% 48% 54% 46%;
+.scale-note { margin: .45em 0 1em; font-size: .74em; color: var(--ink-soft); }
+.scale-note b { color: var(--ink); }
+
+/* 两条特殊机制：红的是炸弹，金的能暴富。方角 + 错位投影，一眼分得开 */
+.specs { display: grid; grid-template-columns: 1fr 1fr; gap: .55em; margin: 0 0 1em; }
+.spec {
+  display: flex; align-items: center; gap: .4em;
+  padding: .38em .45em; border: 2px solid var(--ink);
 }
-.legend .txt { display: flex; flex-direction: column; min-width: 0; }
-.legend .txt b { font-size: .74em; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.legend .txt small { font-size: .68em; color: var(--ink-soft); }
-.legend .txt small.plus { color: var(--good); }
-.legend .txt small.minus { color: var(--bad); }
-.legend li.danger { background: rgba(255, 236, 236, .95); box-shadow: 0 1px 3px rgba(216, 69, 63, .18); }
+.spec img { flex: 0 0 auto; width: 1.9em; height: 1.9em; object-fit: contain; }
+.spec-txt { display: flex; flex-direction: column; line-height: 1.24; min-width: 0; }
+.spec-txt b { font-size: .76em; letter-spacing: .04em; }
+.spec-txt em { font-style: normal; font-size: .64em; color: var(--ink-soft); }
+.spec.boom { background: #ffe4df; box-shadow: 3px 3px 0 var(--bad); }
+.spec.boom .spec-txt b { color: #b3271f; }
+.spec.jack { background: #fff0c4; box-shadow: 3px 3px 0 #d99a12; }
+.spec.jack .spec-txt b { color: #8a5a00; }
 
 /* 摆动速度说明（开始页） */
 .swing-note {
@@ -311,33 +369,74 @@ body {
 }
 
 /* 手感档位 */
+/* 难度：方角分段器。平时是纸白色，选中那块翻成墨色、
+   倍率数字转成奶龙黄 —— 不靠渐变按钮，靠明暗对比。 */
 .preset {
-  display: flex; align-items: center; justify-content: center; gap: .3em;
-  margin: 0 0 .8em;
+  display: flex; align-items: stretch; gap: 0;
+  margin: 0 0 .5em; border: 2px solid var(--ink); background: #fff;
+}
+.preset-label {
+  display: flex; align-items: center; padding: 0 .55em;
+  font-size: .66em; font-weight: 800; letter-spacing: .18em;
+  color: var(--ink-soft); border-right: 2px solid var(--ink);
 }
 .preset-label { font-size: .74em; color: var(--ink-soft); margin-right: .15em; }
 .preset button {
-  font: inherit; font-size: .75em; font-weight: 600;
-  padding: .32em .8em; border-radius: 99px; cursor: pointer;
-  border: 1px solid rgba(126, 84, 44, .22);
-  background: #fff; color: var(--ink-soft);
-  transition: all .2s;
+  flex: 1 1 0; font: inherit; font-size: .74em; font-weight: 800;
+  padding: .46em .2em; border: 0; border-radius: 0; cursor: pointer;
+  background: transparent; color: var(--ink);
+  transition: background .16s, color .16s;
 }
-.preset button.on {
-  color: #fff; border-color: transparent;
-  background: linear-gradient(135deg, #ff8a5b, var(--brand) 55%, var(--brand-dark));
-  box-shadow: 0 6px 14px rgba(225, 75, 75, .3);
-}
+.preset button + button { border-left: 1px solid rgba(74, 51, 37, .18); }
+.preset button.on { background: var(--ink); color: #ffdc5e; }
 /* 倍率就写在档位上：选难度之前先知道这一档值多少分，
   免得打完一局才发现"原来硬核是 ×3"。 */
 .preset button b {
-  font-size: .92em; font-weight: 800; margin-left: .14em; opacity: .74;
+  font-size: .92em; font-weight: 800; margin-left: .22em; opacity: .55;
 }
-.preset button.on b { opacity: .92; }
+.preset button.on b { opacity: 1; }
 .preset-note {
-  margin: -.42em 0 .7em; font-size: .68em; line-height: 1.55;
-  color: var(--ink-soft); text-align: center;
+  margin: 0 0 .5em; font-size: .66em; line-height: 1.5;
+  color: var(--ink-soft);
 }
+
+/* 开始键：黄底墨边 + 实心错位投影，按下去整块往投影里陷 */
+.start-btn {
+  margin: 0 0 .5em; padding: .72em 1em;
+  font-size: 1em; font-weight: 900; letter-spacing: .2em;
+  color: #3a2a1e; border: 3px solid var(--ink); border-radius: 2px;
+  background: linear-gradient(180deg, #ffe98f, #ffc93c);
+  box-shadow: 6px 6px 0 var(--ink);
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+.start-btn:active { transform: translate(4px, 4px); box-shadow: 2px 2px 0 var(--ink); }
+
+/* 一行按键速查：只写键位，不写解释 */
+.keys { margin: 0 0 .9em; font-size: .62em; color: var(--ink-soft); }
+.keys b {
+  font-weight: 800; color: var(--ink);
+  background: rgba(74, 51, 37, .1); padding: 0 .3em; border-radius: 1px;
+}
+.keys i { font-style: normal; opacity: .4; padding: 0 .18em; }
+
+.start-foot { padding-top: .7em; border-top: 2px dashed rgba(74, 51, 37, .22); }
+.best-line { display: block; margin-bottom: .5em; font-size: .66em; color: var(--ink-soft); }
+.best-line b { color: var(--ink); }
+.board-bar {
+  display: flex; align-items: center; gap: .45em; width: 100%;
+  padding: .42em .55em; font: inherit; font-size: .68em; color: var(--ink);
+  background: #fff; border: 2px solid var(--ink); border-radius: 2px;
+  box-shadow: 2px 2px 0 rgba(74, 51, 37, .85); cursor: pointer;
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+.board-bar:active { transform: translate(2px, 2px); box-shadow: 0 0 0 rgba(74, 51, 37, .85); }
+.board-bar:focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; }
+.bb-label { flex: 0 0 auto; font-weight: 800; letter-spacing: .08em; }
+.bb-meta {
+  flex: 1 1 auto; min-width: 0; text-align: right;
+  color: var(--ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.bb-arrow { flex: 0 0 auto; font-weight: 800; }
 
 /* 按钮 */
 .btn {
@@ -454,29 +553,6 @@ body {
  * 两个入口共用一套视觉：开始页底部一枚胶囊（排行榜），结算卡上一块上榜区。
  * 榜单本身是 <ol>，名次用圆牌而不是"1."—— 数字列表在窄屏上容易被挤成两行。
  */
-.lb-entry {
-  display: flex; align-items: center; gap: .45em;
-  width: 100%; margin: .55em 0 0; padding: .5em .7em;
-  font: inherit; font-size: .74em; color: var(--ink);
-  background: rgba(255, 255, 255, .9);
-  border: 1px solid rgba(126, 84, 44, .16);
-  border-radius: .7em; cursor: pointer;
-  box-shadow: 0 2px 8px rgba(126, 84, 44, .1);
-  transition: transform .16s cubic-bezier(.22, 1, .36, 1), box-shadow .16s, border-color .16s;
-}
-.lb-entry:hover { border-color: rgba(232, 163, 61, .5); box-shadow: 0 6px 16px rgba(126, 84, 44, .16); }
-.lb-entry:active { transform: scale(.985); }
-.lb-entry:focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; }
-.lbe-badge { flex: 0 0 auto; width: 1.5em; height: 1.5em; color: var(--gold-dark); }
-.lbe-cup { fill: currentColor; }
-.lbe-line { stroke: currentColor; }
-.lbe-txt { font-weight: 700; letter-spacing: .04em; }
-.lbe-meta {
-  margin-left: auto; min-width: 0;
-  font-size: .86em; font-weight: 600; color: var(--ink-soft);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-
 /* ---------- 玩家头像 ----------
    十张奶蛙立绘全是黄色系，靠圆底那层 tint 区分（tint 取自矿区里同一只蛙）；
    立绘自带一点底部投影，稍微放大一点填满圆，不然四周留一圈空。 */
@@ -621,7 +697,6 @@ body {
  * 舞台本来就更宽，卡片里的内容应该横向铺开而不是拉长成一列。
  * 注意：这里判的是"舞台比例"，不是视口比例，和 JS 选布局的逻辑保持一致。 */
 @media (min-aspect-ratio: 6/5) {
-  .legend { grid-template-columns: repeat(3, 1fr); }
   .shop-list { grid-template-columns: repeat(3, 1fr); }
   .tally { grid-template-columns: repeat(3, 1fr); }
   .ov-card { max-width: 46em; }

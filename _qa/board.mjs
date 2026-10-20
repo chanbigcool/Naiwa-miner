@@ -3,8 +3,9 @@
  * 覆盖四条真实路径：
  *   1. 空榜 → 开始页入口的状态文案
  *   2. 有历史记录 → 三个榜的排序、名字归属（只认未署名的）
- *   3. 已署名玩家结算 → 直接报名次，不再弹起名框
- *   4. 新玩家结算 → 在结算卡上留名，名字落盘、记录跟着改名
+ *   3. 已署名玩家结算 → 报名次，名字框仍在（这一局还能改名）
+ *   4. 新玩家结算 → 在结算卡上留名，名字落盘、只改这一条
+ *   5. 同一台设备第二局换名字 → 榜上两条、两张脸，历史不动
  * 用法：node _qa/board.mjs http://127.0.0.1:8137/miner/ _qa/shots-board
  */
 import { spawn } from 'node:child_process';
@@ -261,8 +262,9 @@ try {
     const raw = JSON.parse(localStorage.getItem('naiwa_miner_board_v1'));
     const mine = raw.filter(r => r.name === '奶蛙王');
     const otherUsed = ['dog', 'god', 'laugh'];
+    const faces = JSON.parse(localStorage.getItem('naiwa_miner_faces_v1') || '{}');
     return {
-      stored: localStorage.getItem('naiwa_miner_avatar'),
+      stored: faces['奶蛙王'] || '',
       mine: mine.map(r => r.avatar),
       otherUsed,
       live: window.__miner.avatar,
@@ -272,7 +274,7 @@ try {
       })(),
     };
   })()`);
-  need(!!report.nameAvatar.stored, '头像应该落盘到 localStorage');
+  need(!!report.nameAvatar.stored, '名字对应的脸应该落盘到 localStorage');
   need(report.nameAvatar.live === report.nameAvatar.stored, '内存里的那一枚应该就是落盘的那一枚');
   need(report.nameAvatar.mine.every((k) => k === report.nameAvatar.stored),
     '认领之后同一人只能有一张脸：' + JSON.stringify(report.nameAvatar.mine));
@@ -319,14 +321,19 @@ try {
     badge: document.getElementById('overRankBadge').textContent,
     rankTxt: document.getElementById('overRankTxt').innerText.replace(/\\s+/g, ' ').trim(),
     nameRowHidden: document.getElementById('overNameRow').hidden,
+    prefill: document.getElementById('overNameInput').value,
+    btn: document.getElementById('btnSaveName').textContent.trim(),
     hint: document.getElementById('overNameHint').innerText.trim(),
     podium: document.getElementById('overLb').classList.contains('podium'),
     rows: window.__miner.board.length,
   }))()`);
   need(report.namedFail.over, '应该进结算面板');
   need(report.namedFail.badge === '#1', '12000 分应该第一，实际 ' + report.namedFail.badge);
-  need(report.namedFail.nameRowHidden, '已署名玩家不该再弹起名框');
-  need(report.namedFail.hint.indexOf('奶蛙王') >= 0, '结算卡应该显示用哪个名字上榜');
+  /* 名字按"一局一枚"：已经署过名也照样给输入框，预填上次的名字，
+     想换个名字直接改 —— 这是"同一台设备能留不同名字"的入口。 */
+  need(!report.namedFail.nameRowHidden, '结算卡上应该始终能改这一局的名字');
+  need(report.namedFail.prefill === '奶蛙王', '名字框应预填上一局用过的名字，实际 ' + report.namedFail.prefill);
+  need(report.namedFail.btn === '改这条', '已署名时按钮应是"改这条"，实际 ' + report.namedFail.btn);
   need(report.namedFail.podium, '第一名应该有种领奖台样式');
   await shot('05-over-named.png');
 
@@ -367,7 +374,7 @@ try {
       src: img ? img.getAttribute('src') : '',
       loaded: !!(img && img.naturalWidth > 0),
       w: slot ? Math.round(slot.getBoundingClientRect().width) : 0,
-      stored: localStorage.getItem('naiwa_miner_avatar'),
+      stored: window.__miner.avatar,
     };
   })()`);
   need(report.newPlayerAva.loaded, '结算卡上的头像没加载出来');
@@ -388,11 +395,16 @@ try {
       stored: localStorage.getItem('naiwa_miner_name'),
       recName: raw[0].name,
       named: raw[0].named,
+      btn: document.getElementById('btnSaveName').textContent.trim(),
     };
   })()`);
-  need(report.afterSubmit.nameRowHidden, '留名之后起名框应该收起');
+  /* 名字是"一局一枚"：本机没上云时，留完名输入框仍在，
+     按钮变成"改这条"—— 想反悔、想换个名字都还来得及。 */
+  need(!report.afterSubmit.nameRowHidden, '本机榜上留完名，输入框应该还在（还能改这一条）');
+  need(report.afterSubmit.btn === '改这条', '留名之后按钮应该变成"改这条"，实际 ' + report.afterSubmit.btn);
   need(report.afterSubmit.stored === '小王', '名字没落盘');
   need(report.afterSubmit.recName === '小王' && report.afterSubmit.named === true, '记录没跟着改名');
+  need(report.afterSubmit.hint.indexOf('只改这一条') > 0, '留名提示应说明只改这一条：' + report.afterSubmit.hint);
   await shot('08-over-signed.png');
 
   /* ---------- 5. 刷新之后还在 ---------- */
@@ -417,13 +429,15 @@ try {
   /* 刷新一次就换脸的话，玩家会以为榜被别人顶了 */
   report.avaAfterReload = await evaluate(`(() => {
     const img = document.querySelector('#boardList .bl-ava img');
-    return { src: img ? img.getAttribute('src') : '', stored: localStorage.getItem('naiwa_miner_avatar') };
+    return { src: img ? img.getAttribute('src') : '', stored: window.__miner.avatar };
   })()`);
   need(report.avaAfterReload.src.indexOf('-' + report.avaAfterReload.stored + '.webp') > 0,
     '刷新之后头像换了：' + JSON.stringify(report.avaAfterReload));
   await shot('09-board-persisted.png');
 
-  // 改名要连带改掉"自己的"记录
+  /* 改名 = 换下一局用的名字，**历史一条都不许动**。
+     这是"同一台设备每局能留不同名字"的前提：
+     以前改名会把旧记录一起搬走，一台机器永远只能有一个名字。 */
   await click('#boardNameInput');
   await evaluate('document.getElementById("boardNameInput").select()');
   await send('Input.insertText', { text: '大王' });
@@ -431,11 +445,22 @@ try {
   await sleep(350);
   report.rename = await evaluate(`(() => {
     const raw = JSON.parse(localStorage.getItem('naiwa_miner_board_v1'));
-    return { stored: localStorage.getItem('naiwa_miner_name'), rec: raw[0].name,
-             ava: raw[0].avatar, avaStored: localStorage.getItem('naiwa_miner_avatar') };
+    const faces = JSON.parse(localStorage.getItem('naiwa_miner_faces_v1') || '{}');
+    return {
+      stored: localStorage.getItem('naiwa_miner_name'),
+      rec: raw[0].name,
+      recNamed: raw[0].named,
+      oldRec: raw[0],
+      faceOfNew: faces['大王'] || '',
+      faceOfOld: faces['小王'] || '',
+      ava: raw[0].avatar,
+    };
   })()`);
-  need(report.rename.stored === '大王' && report.rename.rec === '大王', '改名后历史记录应该跟着改');
-  need(report.rename.ava === report.rename.avaStored, '改名不该换脸');
+  need(report.rename.stored === '大王', '新名字没落盘');
+  need(report.rename.rec === '小王' && report.rename.recNamed,
+    '改名不该动历史记录，实际被改成 ' + report.rename.rec);
+  need(!!report.rename.faceOfNew && report.rename.faceOfNew !== report.rename.faceOfOld,
+    '新名字应该分到一张新脸：' + JSON.stringify(report.rename));
   await shot('10-board-renamed.png');
 
   /* ---------- 6. 中途退出也要留档 ---------- */
@@ -465,6 +490,64 @@ try {
     '退出局没按难度换算（标准 ×2 应为 8642）：' + report.quitRecord.score);
   need(report.quitRecord.onStart, '退出应该回到开始页');
   await shot('11-start-after-quit.png');
+
+  /* ---------- 7. 同一台设备，第二局换一个名字 ----------
+     这是这次改动的核心：一局一枚名字，互不覆盖。
+     上一局退出时用的是"大王"（8642 分），这一局改成"阿豪"。 */
+  await click('#btnStart');
+  await sleep(900);
+  await evaluate(`(() => { const g = window.__miner.game; g.score = 5000; g.target = 9999; g.level = 3; g.comboBest = 6; g.timeLeft = 0.04; })()`);
+  await sleep(900);
+  report.secondRun = await evaluate(`(() => ({
+    hidden: document.getElementById('overNameRow').hidden,
+    prefill: document.getElementById('overNameInput').value,
+    btn: document.getElementById('btnSaveName').textContent.trim(),
+  }))()`);
+  need(!report.secondRun.hidden, '第二局结算也要能留名');
+  need(report.secondRun.prefill === '大王', '第二局应预填上一局的名字，实际 ' + report.secondRun.prefill);
+
+  await click('#overNameInput');
+  await evaluate('document.getElementById("overNameInput").select()');
+  await send('Input.insertText', { text: '阿豪' });
+  await click('#btnSaveName');
+  await sleep(450);
+
+  report.twoNames = await evaluate(`(() => {
+    const raw = JSON.parse(localStorage.getItem('naiwa_miner_board_v1'));
+    const faces = JSON.parse(localStorage.getItem('naiwa_miner_faces_v1') || '{}');
+    const pick = (n) => raw.filter(r => r.name === n);
+    return {
+      names: raw.map(r => r.name),
+      大王: pick('大王').map(r => ({ score: r.score, avatar: r.avatar })),
+      阿豪: pick('阿豪').map(r => ({ score: r.score, avatar: r.avatar })),
+      faceOf大王: faces['大王'] || '',
+      faceOf阿豪: faces['阿豪'] || '',
+      stored: localStorage.getItem('naiwa_miner_name'),
+    };
+  })()`);
+  need(report.twoNames.阿豪.length === 1, '第二局应该以阿豪上榜：' + JSON.stringify(report.twoNames.阿豪));
+  need(report.twoNames.大王.length === 1 && report.twoNames.大王[0].score === 8642,
+    '上一局（大王 8642）必须原样保留：' + JSON.stringify(report.twoNames.大王));
+  need(report.twoNames.阿豪[0].score === 10000,
+    '第二局 5000 × 2 应为 10000：' + report.twoNames.阿豪[0].score);
+  need(!!report.twoNames.faceOf阿豪 && report.twoNames.faceOf阿豪 !== report.twoNames.faceOf大王,
+    '两个名字应该两张脸：' + JSON.stringify(report.twoNames));
+  need(report.twoNames.stored === '阿豪', '默认名字应更新为阿豪');
+  await shot('12-two-names.png');
+
+  /* 榜上应该是三个人、三张脸 —— 一台设备也能留下这么多条 */
+  await click('#btnOverBoard');
+  await sleep(450);
+  report.threeRows = await evaluate(`(() => {
+    const rows = [...document.querySelectorAll('#boardList .bl-row')];
+    return rows.map(r => ({
+      name: r.querySelector('.bl-who b').textContent,
+      ava: (r.querySelector('.bl-ava img') || {}).getAttribute ? r.querySelector('.bl-ava img').getAttribute('src') : '',
+    }));
+  })()`);
+  need(report.threeRows.length === 3, '榜上应该有三条，实际 ' + report.threeRows.length);
+  need(new Set(report.threeRows.map(r => r.ava)).size === 3, '三个名字应该三张脸：' + JSON.stringify(report.threeRows));
+  await shot('13-board-three-names.png');
 
   fs.writeFileSync(path.join(OUTDIR, 'board-report.json'), JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report, null, 2));
