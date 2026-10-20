@@ -46,6 +46,8 @@ function refsOf(pageRel) {
   while ((m = re.exec(html))) {
     const raw = m[1].trim();
     if (!raw || raw.startsWith('#') || /^(https?:|data:|mailto:|javascript:)/i.test(raw)) { continue; }
+    // 指向目录的引用（如 miner/）不是文件，真正的 index.html 会在 PAGES 里单独校验，跳过避免误报"本机缺这个文件"
+    if (raw.endsWith('/')) { continue; }
     const q = raw.indexOf('?');
     const bare = q >= 0 ? raw.slice(0, q) : raw;
     const query = q >= 0 ? raw.slice(q) : '';
@@ -85,9 +87,12 @@ console.log('  脚本/样式上的 v  : ' + (version.vers.length ? version.vers.
 if (version.missing.length) { console.log('  没带 ?v= 的标签   : ' + version.missing.join(', ')); }
 console.log('  → ' + (version.ok ? '一致' : '不一致（同一次部署里混了两个版本，必须修）'));
 
-/* 根路径必须"落地即开局"：
- * 集合页删掉之后，根 index.html 只剩一张跳转卡。这条检查防的是
- * "跳转被改回旧集合页 / 跳到不存在的路径"—— 用户打开站点第一眼就是它。 */
+/* 根路径入口：
+ * 根 index.html 现在是"进站落地页"（奶蛙矿工大标题 + 玩法简介 + 开始游戏按钮），
+ * 也可以降级成一张纯跳转卡。两种形态都允许，只要满足：
+ *   1) 站内入口确实指向 miner/（要么 refresh/location.replace 跳过去，要么有「开始游戏」a 链到 miner/）；
+ *   2) 进站页带「奶蛙矿工」大标题（class="title"），别被旧集合页顶替。
+ * 这条检查防的是"根页被改回旧集合页 / 入口跳到不存在的路径"。 */
 function checkEntry() {
   let html = '';
   try { html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8'); } catch (e) {
@@ -95,15 +100,21 @@ function checkEntry() {
   }
   const meta = /http-equiv="refresh"[^>]*content="[^"]*url=([^";\s]+)"/i.exec(html);
   const js = /location\.replace\(\s*'([^']+)'/.exec(html);
-  const targets = [meta && meta[1], js && js[1]].filter(Boolean);
-  const ok = targets.length > 0 && targets.every((t) => t.indexOf('miner/') === 0);
-  return { ok, note: targets.length ? targets.join(' / ') : '没有跳转' };
+  const redirectToMiner = [meta && meta[1], js && js[1]]
+    .filter(Boolean).some((t) => t.indexOf('miner/') === 0);
+  const hasEnterLink = /<a[^>]+href="miner\/?[^"]*"[^>]*>/.test(html);
+  const hasTitle = /class="title"[^>]*>奶蛙矿工</.test(html) || /<title>奶蛙矿工<\/title>/.test(html);
+  const note = redirectToMiner
+    ? '跳转 miner/'
+    : (hasEnterLink && hasTitle ? '进站页（标题 + 开始游戏 → miner/）' : '入口缺失');
+  const ok = (redirectToMiner || hasEnterLink) && hasTitle;
+  return { ok, note };
 }
 
 const entry = checkEntry();
 console.log('\n根路径入口');
-console.log('  跳转目标 : ' + entry.note);
-console.log('  → ' + (entry.ok ? '直接进 miner/' : '不对（根路径必须落到 miner/）'));
+console.log('  形态 : ' + entry.note);
+console.log('  → ' + (entry.ok ? '进站页或跳转都正常' : '不对（根路径必须能进 miner/ 且带奶蛙矿工标题）'));
 
 const seen = new Map();
 for (const page of PAGES) {
