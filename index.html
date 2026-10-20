@@ -4,23 +4,138 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>奶蛙矿工</title>
-<meta name="description" content="钩子来回摆动，松手放钩。手机与电脑均可直接开玩。">
+<meta name="description" content="钩子来回摆动，松手放钩，把金蛙宝物拉上来。手机与电脑均可直接开玩。">
 <meta name="theme-color" content="#fff9f1">
 <link rel="icon" href="favicon.ico">
-<meta http-equiv="refresh" content="0; url=miner/">
-<script>location.replace('miner/' + location.search + location.hash);</script>
 <style>
-  html { height: 100%; }
-  body {
-    margin: 0; min-height: 100%;
-    display: grid; place-items: center;
-    background: #fff9f1; color: #7a6556;
-    font: 14px/1.6 "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  :root {
+    --ink: #4a3325; --ink-soft: #7a6556; --cream: #fff7ec;
+    --brand: #ff6b6b; --brand-dark: #e14b4b;
+    --gold: #e8a33d; --gold-dark: #b97a1f; --good: #35a06b;
   }
-  a { color: #e14b4b; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: var(--ink);
+    background:
+      radial-gradient(1200px 700px at 8% -12%, #ffe9bd 0%, transparent 60%),
+      radial-gradient(900px 600px at 104% -6%, #d5f0ff 0%, transparent 55%),
+      radial-gradient(1000px 780px at 50% 118%, #ffdbe6 0%, transparent 62%),
+      #fff9f1;
+    background-attachment: fixed;
+    -webkit-text-size-adjust: 100%;
+  }
+  .wrap {
+    min-height: 100dvh; display: grid; place-items: center;
+    padding: max(20px, env(safe-area-inset-top)) 16px max(20px, env(safe-area-inset-bottom));
+  }
+  .card {
+    width: 100%; max-width: 440px; text-align: center;
+    padding: 30px 26px 26px;
+    border-radius: 26px;
+    background: linear-gradient(180deg, rgba(255,255,255,.97), rgba(255,248,238,.97));
+    box-shadow: 0 24px 60px rgba(126, 84, 44, .22), 0 0 0 1px rgba(255,255,255,.8) inset;
+    animation: cardIn .4s cubic-bezier(.22, 1, .36, 1);
+  }
+  @keyframes cardIn { from { opacity: 0; transform: translateY(16px) scale(.97); } to { opacity: 1; transform: none; } }
+
+  /* 主角蛙 */
+  .hero {
+    width: 116px; height: 116px; margin: 0 auto 14px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 34% 26%, #fff 0%, #ffe6a8 76%);
+    box-shadow: 0 0 0 1px rgba(126,84,44,.16) inset, 0 8px 22px rgba(126,84,44,.2);
+    overflow: hidden; display: grid; place-items: center;
+  }
+  .hero img { width: 116%; height: 116%; object-fit: contain; }
+
+  /* 大标题 */
+  .title {
+    margin: 0; font-size: 44px; font-weight: 800; letter-spacing: .06em; line-height: 1.1;
+    background: linear-gradient(100deg, #ffb347, #ff7a59 50%, #e14b4b);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .subtitle {
+    margin: 8px 0 0; font-size: 14px; letter-spacing: .03em; color: var(--ink-soft);
+  }
+
+  /* 简介 */
+  .intro {
+    margin: 18px 0 0; padding: 14px 16px;
+    border-radius: 14px; background: rgba(126,84,44,.06);
+    text-align: left;
+  }
+  .intro h2 {
+    margin: 0 0 8px; font-size: 12px; font-weight: 800; letter-spacing: .16em;
+    color: var(--ink-soft); text-align: center;
+  }
+  .intro ul { list-style: none; margin: 0; padding: 0; }
+  .intro li {
+    position: relative; padding: 5px 0 5px 20px;
+    font-size: 13.5px; line-height: 1.6; color: var(--ink);
+  }
+  .intro li::before {
+    content: ''; position: absolute; left: 2px; top: 12px;
+    width: 8px; height: 8px; border-radius: 50%;
+    background: linear-gradient(135deg, #ffb347, #e8912a);
+  }
+  .intro li b { color: var(--gold-dark); font-weight: 700; }
+  .intro li .bad { color: var(--brand-dark); }
+
+  /* 进入按钮 */
+  .enter {
+    display: block; width: 100%; margin-top: 22px;
+    font: inherit; font-size: 18px; font-weight: 800; letter-spacing: .08em;
+    padding: 14px 18px; border: 0; border-radius: 16px; cursor: pointer;
+    text-decoration: none; color: #fff;
+    background: linear-gradient(135deg, #ff8a5b, #ff4d6d 55%, #e14b4b);
+    box-shadow: 0 12px 26px rgba(225, 75, 75, .32);
+    transition: transform .18s cubic-bezier(.22, 1, .36, 1), box-shadow .18s;
+  }
+  .enter:hover { box-shadow: 0 16px 32px rgba(225, 75, 75, .4); }
+  .enter:active { transform: scale(.98); }
+  .enter:focus-visible { outline: 3px solid var(--brand); outline-offset: 3px; }
+  .enter.big { animation: breathe 2.4s ease-in-out infinite; }
+  @keyframes breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.035); } }
+
+  .foot {
+    margin: 16px 0 0; font-size: 11px; line-height: 1.6; color: var(--ink-soft);
+  }
+  .foot a { color: inherit; }
+
+  @media (max-width: 360px) {
+    .title { font-size: 38px; }
+    .card { padding: 26px 20px 22px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .card, .enter.big { animation: none !important; }
+  }
 </style>
 </head>
 <body>
-<p><a href="miner/">奶蛙矿工</a></p>
+  <div class="wrap">
+    <main class="card">
+      <div class="hero">
+        <img src="assets/nai/nai02-stand.webp" alt="奶蛙矿工">
+      </div>
+      <h1 class="title">奶蛙矿工</h1>
+      <p class="subtitle">钩子左右摆，松手放钩</p>
+
+      <section class="intro">
+        <h2>怎么玩</h2>
+        <ul>
+          <li>钩子来回摆动，<b>点一下</b>松手放钩，把金蛙和宝物拉上来。</li>
+          <li>金蛙、宝箱、钻石越重越值钱；<span class="bad">炸弹</span>拉到会扣分、断连击。</li>
+          <li>限时内达到目标分即可收工，分数越高段位越高。</li>
+          <li>过关赚<b>奶蛙币</b>，小卖部换增益，换一局清零。</li>
+        </ul>
+      </section>
+
+      <a class="enter big" href="miner/">开始游戏</a>
+
+      <p class="foot">手机与电脑均可直接开玩 · 竖屏体验最佳</p>
+    </main>
+  </div>
 </body>
 </html>
