@@ -295,8 +295,8 @@ try {
   // —— 小卖部：第 3 关起才出现 ——
   report.shop = await evaluate(`(() => {
     const g = window.__miner.game;
-    g.level = 3; g.score = g.target + 2600; g.timeLeft = 0.05;
-    return { 强推到第: g.level, 分数: g.score, 门槛: g.target };
+    g.level = 3; g.score = g.target + 2600; g.coins = 1500; g.timeLeft = 0.05;
+    return { 强推到第: g.level, 分数: g.score, 门槛: g.target, 币: g.coins };
   })()`);
   await sleep(900);
   report.shopBtnText = await evaluate('document.getElementById("btnNext").textContent');
@@ -306,22 +306,25 @@ try {
   report.shopView = await evaluate(`(() => {
     const v = window.MinerLogic.shopView(window.__miner.game);
     return {
-      商品: v.items.map(x => x.name + ' ¥' + x.price),
-      能动用: v.budget,
+      商品: v.items.map(x => x.name + ' ' + x.price + '币'),
+      币: v.coins,
       都能买: v.items.every(x => x.canBuy),
       下一关炸药: v.nextDynamite,
+      HUD币: document.getElementById('hudCoin').textContent,
+      钱包文案: document.querySelector('.shop-wallet').innerText.replace(/\\s+/g, ' ').trim(),
     };
   })()`);
   await shot('10-shop.png');
 
-  // 买一发炸药：分数应该扣掉，paused/pending 应该记上
-  const beforeBuy = await evaluate('window.__miner.game.score');
+  // 买一发炸药：只扣币，分数一分不动（这是这次改版的核心）
+  const beforeBuy = await evaluate('JSON.stringify({score: window.__miner.game.score, coins: window.__miner.game.coins})');
   await evaluate('document.querySelector("#shopList button[data-buy=\\"dynamite\\"]").click()');
   await sleep(300);
   report.buyDynamite = await evaluate(`(() => {
     const g = window.__miner.game;
-    return { 扣了: ${beforeBuy} - g.score, pending: JSON.stringify(g.pending), 花费: g.shopSpent,
-             下一关炸药: window.MinerLogic.shopView(g).nextDynamite };
+    const b = ${beforeBuy};
+    return { 扣币: b.coins - g.coins, 扣分: b.score - g.score, pending: JSON.stringify(g.pending),
+             花费: g.shopSpent, 下一关炸药: window.MinerLogic.shopView(g).nextDynamite };
   })()`);
   await shot('11-shop-bought.png');
 

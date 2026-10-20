@@ -1379,42 +1379,78 @@ test('炸掉天使：不扣那 150 分（炸弹只是被清掉）', function () 
  * ================================================================================== */
 console.log('\nL. 经济与小卖部');
 
-test('小卖部三件套都带说明文案（需求：小卖部界面要有介绍说明）', function () {
-  eq(L.SHOP_ITEMS.length, 3);
+test('小卖部五件套都带说明文案（需求：小卖部界面要有介绍说明）', function () {
+  eq(L.SHOP_ITEMS.length, 5);
   L.SHOP_ITEMS.forEach(function (it) {
     assert(it.key && it.name && it.tag, it.key + ' 缺字段');
     assert(typeof it.desc === 'string' && it.desc.length >= 10, it.name + ' 缺 desc（界面上的介绍说明）');
     assert(typeof it.hint === 'string' && it.hint.length >= 8, it.name + ' 缺 hint（用法提示）');
     assert(it.price > 0, it.name + ' 应该有价格');
+    assert(it.scope === 'level' || it.scope === 'run', it.name + ' 要写明作用域');
+    assert(it.max >= 1, it.name + ' 要写明上限');
   });
   var keys = L.SHOP_ITEMS.map(function (i) { return i.key; }).join(',');
-  eq(keys, 'dynamite,rockbook,drink', '三件套的构成变了，界面文案要跟着改');
+  eq(keys, 'dynamite,rockbook,drink,hourglass,guard', '商品构成变了，界面文案要跟着改');
 });
 
-test('买：扣分、记进 pending、累计次数', function () {
+test('产币：按本关收入折算 + 连击 + 不撞炸弹，并且有单关上限', function () {
   var s = newGame();
-  s.level = 5; s.score = 5000; s.target = 1000;
+  s.level = 4; L.beginLevel(s);
+  s.levelStartScore = 0; s.score = 1000; s.comboBest = 5; s.angels = 0;
+  var cfg = s.cfg;
+  var want = Math.floor(1000 * cfg.COIN_RATE) + 5 * cfg.COIN_PER_COMBO + cfg.COIN_NO_ANGEL;
+  eq(L.coinGainOf(s), want, '币要能算清楚：收入折成 + 连击 + 无炸弹奖励');
+
+  s.angels = 2;
+  eq(L.coinGainOf(s), want - cfg.COIN_NO_ANGEL, '撞了炸弹就没有那笔奖励');
+  eq(s.coins, 0, '算归算，不该顺手发币');
+
+  s.score = 9999999;
+  eq(L.coinGainOf(s), cfg.COIN_MAX_PER_LEVEL, '单关产币要有上限');
+});
+
+test('发币：同一关只发一次（两条过关路径不会重复发）', function () {
+  var s = newGame();
+  s.level = 4; L.beginLevel(s);
+  s.score = s.target + 1000; s.levelStartScore = 0; s.comboBest = 0;
+  var g = L.awardCoins(s);
+  assert(g > 0, '应该发到币');
+  eq(s.coins, g);
+  eq(L.awardCoins(s), 0, '同一关再调一次不该再发');
+  eq(s.coins, g, '余额不该翻倍');
+});
+
+test('买：扣币、不扣分、记进 pending', function () {
+  var s = newGame();
+  s.level = 5; s.score = 5000; s.target = 1000; s.coins = 1000;
   var r = L.buy(s, 'dynamite');
   assert(r.ok, '应该买得起');
-  eq(s.score, 5000 - r.item.price);
+  eq(s.coins, 1000 - r.item.price, '扣的应该是奶蛙币');
+  eq(s.score, 5000, '分数一分都不能动（这是这次改版的核心）');
   eq(s.pending.dynamite, 1);
   eq(s.shopSpent, r.item.price);
   L.buy(s, 'dynamite');
   eq(s.pending.dynamite, 2, '炸药应该能连买');
 });
 
-test('买不起 / 买完会低于门槛：拦住并给出理由', function () {
+test('币不够 / 买满：拦住并给出理由', function () {
   var s = newGame();
-  s.level = 5; s.score = 1000; s.target = 900;   // 只剩 100 的余量
-  var r = L.buy(s, 'rockbook');                   // 石头图鉴 900
-  assert(!r.ok, '买完只剩 100 < 门槛 900，应该被拦住');
-  assert(/门槛/.test(r.reason), '应该说明原因，实际：' + r.reason);
-  eq(s.score, 1000, '被拦住时不该扣分');
+  s.level = 5; s.coins = 10;
+  var r = L.buy(s, 'drink');
+  assert(!r.ok, '币不够应该被拦住');
+  assert(/奶蛙币/.test(r.reason), '理由要说人话，实际：' + r.reason);
+  eq(s.coins, 10, '被拦住时不该扣币');
+
+  s.coins = 99999;
+  assert(L.buy(s, 'drink').ok);
+  var r2 = L.buy(s, 'drink');
+  assert(!r2.ok, '每关最多买 1 瓶力量药水');
+  assert(/限购/.test(r2.reason), '理由要说明上限，实际：' + r2.reason);
 });
 
 test('buff 只顶一关：nextLevel 之后生效，再下一关就没了', function () {
   var s = newGame();
-  s.level = 5; s.score = 9000; s.target = 1000;
+  s.level = 5; s.coins = 9000;
   L.buy(s, 'drink');
   var slow = L.pullSpeedOf(s, { type: 'blob', weight: L.ITEMS.blob.weight });
 
@@ -1422,19 +1458,173 @@ test('buff 只顶一关：nextLevel 之后生效，再下一关就没了', funct
   eq(s.buffs.drink, 1);
   eq(Object.keys(s.pending).length, 0, 'pending 应该被清空（不然能力会复利）');
   var fast = L.pullSpeedOf(s, { type: 'blob', weight: L.ITEMS.blob.weight });
-  near(fast / slow, s.cfg.DRINK_PULL_MULT, 1e-9, '力量饮料应该让回收快 ' + s.cfg.DRINK_PULL_MULT + ' 倍');
+  near(fast / slow, s.cfg.DRINK_PULL_MULT, 1e-9, '力量药水应该让回收快 ' + s.cfg.DRINK_PULL_MULT + ' 倍');
+  assert(s.cfg.DRINK_PULL_MULT >= 1.5, '药水数值不该低于 ×1.5（玩家反馈太弱）');
 
   L.nextLevel(s);                       // 第 7 关 → buff 已过期
   eq(s.buffs.drink, undefined, 'buff 必须只顶一关');
   near(L.pullSpeedOf(s, { type: 'blob', weight: L.ITEMS.blob.weight }), slow, 1e-9);
 });
 
-test('石头图鉴：把灰石堆从 5 分抬成正经收入', function () {
+test('石头图鉴：可累加、本局永久，而且不抬门槛', function () {
   var s = newGame();
+  s.level = 5; s.coins = 5000;
   eq(L.itemWorth(s, 'stone'), L.ITEMS.stone.value, '平时灰石堆就是那点分');
-  s.buffs = { rockbook: 1 };
-  eq(L.itemWorth(s, 'stone'), s.cfg.ROCKBOOK_VALUE);
-  assert(s.cfg.ROCKBOOK_VALUE > L.ITEMS.stone.value * 5, '要抬得够狠才叫"垃圾变收入"');
+  eq(L.shopItem('rockbook').price, 100, '图鉴定价 100 币/本（玩家定的）');
+
+  assert(L.buy(s, 'rockbook').ok);
+  eq(s.books, 1);
+  var one = L.itemWorth(s, 'stone');
+  eq(one, L.ITEMS.stone.value + s.cfg.BOOK_STONE_BONUS, '一本应该加一份加成');
+
+  /* 关键：累加 */
+  L.buy(s, 'rockbook');
+  var two = L.itemWorth(s, 'stone');
+  eq(two, L.ITEMS.stone.value + s.cfg.BOOK_STONE_BONUS * 2, '第二本要叠上去，不是覆盖');
+  assert(two > one, '累加必须真的变多');
+
+  /* 关键：本局永久 —— 换关不失效，而且不占 pending */
+  L.nextLevel(s);
+  eq(s.books, 2, '图鉴是本局永久，不该被 nextLevel 清掉');
+  eq(L.itemWorth(s, 'stone'), two, '下一关石头仍然按两本算');
+  eq(s.pending.rockbook, undefined, '永久道具不该混进下一关的 buff');
+
+  /* 上限 */
+  for (var i = 0; i < 10; i++) { L.buy(s, 'rockbook'); }
+  eq(s.books, s.cfg.BOOK_MAX, '图鉴要收满就停');
+  eq(L.itemWorth(s, 'stone'),
+     L.ITEMS.stone.value + s.cfg.BOOK_STONE_BONUS * s.cfg.BOOK_MAX,
+     '满级石头的面值应该是 5 + 25×5');
+  assert(L.itemWorth(s, 'stone') >= 100, '收满之后一块石头应该值三位数，才配叫"垃圾变收入"');
+});
+
+test('石头图鉴不吃门槛：门槛只按原价算，加成是净赚', function () {
+  /* 旧版的坑：achievableValue 直接累加 value，图鉴把石头抬价的同时把门槛也抬了，
+   * 玩家等于白买。这条测试守着"门槛只看 baseValue"。 */
+  var s = newGame();
+  s.level = 6;
+  s.books = 0;
+  s.items = L.buildItems(s, 6);
+  var baseTarget = L.achievableValue(s.items);
+
+  var s2 = newGame();
+  s2.level = 6; s2.books = 5;
+  s2.items = L.buildItems(s2, 6);
+  eq(L.achievableValue(s2.items), baseTarget, '收了 5 本图鉴，门槛不该跟着涨一分');
+
+  /* 但实际能拿到的价值确实变多了 → 净赚 */
+  var realBase = 0, realBook = 0;
+  s.items.forEach(function (it) { if (it.value > 0) { realBase += it.value; } });
+  s2.items.forEach(function (it) { if (it.value > 0) { realBook += it.value; } });
+  assert(realBook > realBase, '石头确实变值钱了，只是门槛没变');
+});
+
+test('空勾护符：第一次空勾不清连击，用完就没了', function () {
+  var s = newGame();
+  s.level = 6; s.coins = 2000;
+  eq(L.shopItem('guard').price, 280, '护符定价 280 币（玩家定的）');
+  eq(L.buy(s, 'guard').ok, true);
+  eq(L.buy(s, 'guard').ok, true);
+  assert(!L.buy(s, 'guard').ok, '每关最多带 2 个');
+  L.nextLevel(s);
+  eq(s.buffs.guard, 2);
+
+  L.beginLevel(s);
+  setField(s, []);                 // 场地清空，必然抓空
+  s.combo = 5;
+
+  shootStraightDown(s);
+  var r1 = advance(s, 12, 'missSaved');
+  assert(r1.hit, '应该出现"连击保住"事件，而不是 empty');
+  eq(s.combo, 5, '护符吃掉这次空勾，连击不该清零');
+  eq(s.buffs.guard, 1, '用掉一个');
+  eq(s.guardSaves, 1);
+
+  setField(s, []);
+  shootStraightDown(s);
+  var r2 = advance(s, 12, 'missSaved');
+  assert(r2.hit, '第二个护符也该生效');
+  eq(s.combo, 5);
+
+  setField(s, []);
+  shootStraightDown(s);
+  var r3 = advance(s, 12, 'empty');
+  assert(r3.hit, '护符用完之后，空勾就该正常报 empty');
+  eq(s.combo, 0, '没有护符了，连击清零');
+});
+
+test('空勾护符只在连击 ×2 以上才触发：没连击时不白吃', function () {
+  /* 玩家问的"是不是有连击才触发"—— 之前不是，买完第一个空勾就报销了。
+   * 倍率从 3 连（×2）才开始，0/1/2 连断了不丢分，护符不该为它买单。 */
+  var s = newGame();
+  L.beginLevel(s);
+  s.buffs = { guard: 2 };
+  s.combo = 0;
+
+  setField(s, []);
+  shootStraightDown(s);
+  var r = advance(s, 12, 'empty');
+  assert(r.hit, '连击 0 时应该正常报 empty');
+  eq(s.buffs.guard, 2, '连击 0 不消耗护符');
+  eq(s.guardSaves, 0);
+
+  s.combo = 2;                     // 还是 ×1，不该触发
+  setField(s, []);
+  shootStraightDown(s);
+  advance(s, 12, 'empty');
+  eq(s.buffs.guard, 2, '连击 2 也还不到 ×2，不该消耗');
+  eq(s.combo, 0);
+
+  s.combo = 3;                     // 到 ×2 了，开始生效
+  setField(s, []);
+  shootStraightDown(s);
+  var r2 = advance(s, 12, 'missSaved');
+  assert(r2.hit, '连击到 ×2 之后应该触发护符');
+  eq(s.buffs.guard, 1);
+  eq(s.combo, 3, '这次连击保住了');
+});
+
+test('空勾护符不吃炸药那一账：自己炸掉的不算空勾', function () {
+  var s = newGame();
+  L.beginLevel(s);
+  belowMiner(s, 'stone', 300);
+  s.buffs = { guard: 2 };
+  s.combo = 5;
+  shootStraightDown(s);
+  advance(s, 2);                    // 钩到石头
+  L.blowUp(s);
+  advance(s, 20);
+  eq(s.buffs.guard, 2, '炸掉是玩家主动的，不该消耗护符');
+  eq(s.guardSaves, 0);
+  eq(s.combo, 5, '这一钩确实钩到了东西（只是自己炸了），连击本来就不清');
+});
+
+test('护符只顶一关：下一关没有 buff 就不生效', function () {
+  var s = newGame();
+  s.level = 5; s.coins = 2000;
+  L.buy(s, 'guard');
+  L.nextLevel(s);
+  eq(s.buffs.guard, 1);
+  L.nextLevel(s);
+  eq(s.buffs.guard, undefined, '护符只顶一关');
+});
+
+test('沙漏：下一关多 10 秒，可以带两个，而且只顶一关', function () {
+  var s = newGame();
+  s.level = 5; s.coins = 9999;
+  assert(L.buy(s, 'hourglass').ok);
+  assert(L.buy(s, 'hourglass').ok);
+  var r = L.buy(s, 'hourglass');
+  assert(!r.ok, '每关最多带两个');
+
+  L.nextLevel(s);
+  eq(s.buffs.hourglass, 2);
+  eq(s.timeLeft, s.cfg.LEVEL_TIME + 20, '两个沙漏 = +20 秒');
+  eq(L.levelTimeFull(s), s.cfg.LEVEL_TIME + 20, '满时长也要跟着变，否则进度条一开局就满');
+
+  L.nextLevel(s);
+  eq(s.buffs.hourglass, undefined, '沙漏只顶一关');
+  eq(s.timeLeft, s.cfg.LEVEL_TIME);
 });
 
 test('小卖部只在过关之后、第 3 关起开门', function () {
@@ -1448,18 +1638,25 @@ test('小卖部只在过关之后、第 3 关起开门', function () {
   eq(L.shopOpen(s), false, '打到一半不该能买东西');
 });
 
-test('shopView：把商品、能不能买、下一关炸药数一次给全', function () {
+test('shopView：把币、商品、能不能买、下一关炸药数一次给全', function () {
   var s = newGame();
   s.level = 3; s.phase = 'levelClear'; s.score = 2000; s.target = 1000;
+  s.coins = 700; s.coinsEarned = 900; s.books = 1;
   var v = L.shopView(s);
   assert(v.open);
-  eq(v.budget, 1000);
-  eq(v.items.length, 3);
+  eq(v.coins, 700, '界面要显示的是币');
+  eq(v.earned, 900);
+  eq(v.score, 2000, '分数原样带出来，用来在界面上说"一分没动"');
+  eq(v.books, 1);
+  eq(v.items.length, 5);
   v.items.forEach(function (i) {
     assert(typeof i.desc === 'string' && i.desc.length > 0, i.name + ' 的界面文案没带出来');
     assert(typeof i.canBuy === 'boolean');
+    assert(typeof i.max === 'number');
   });
   assert(v.nextDynamite >= 1, '界面要能预告下一关几发炸药');
+  var book = v.items.filter(function (i) { return i.key === 'rockbook'; })[0];
+  eq(book.owned, 1, '图鉴的"已收"数应该跟着本局永久数量走');
 });
 
 /* ==================================================================================
@@ -1529,17 +1726,29 @@ test('收工之后 step 不再推进（计时/物品都不动）', function () {
   eq(s.phase, 'levelClear');
 });
 
-test('收工的钱能带进小卖部：结余就是预算', function () {
-  /* 这条是收工机制存在的理由本身 ——
-   * 达标之后每多挖一分，都会变成小卖部里的预算。 */
+test('收工也拿币：cashOut 会走同一套发币逻辑', function () {
+  /* 币是"继续挖"的唯一回报 —— 收工拿得少，但也是拿得到的。 */
   var s = newGame();
   L.beginLevel(s);
   s.level = 4;
+  s.coins = 0;
   s.score = s.target + 1200;
-  L.cashOut(s);
-  var v = L.shopView(s);
-  assert(v.open, '第 4 关收工应该能进小卖部');
-  eq(v.budget, 1200, '结余应该原样变成预算');
+  s.comboBest = 6; s.angels = 0;
+  var ev = L.cashOut(s);
+  eq(ev.length, 1);
+  assert(ev[0].coinsGain > 0, '收工应该也能拿到这一关的币');
+  eq(s.coins, ev[0].coinsGain, '余额应该等于这一关发的币');
+  eq(ev[0].coins, s.coins);
+});
+
+test('换一局币清零：本局经济不能跨局累积', function () {
+  var s = newGame();
+  s.coins = 500; s.coinsEarned = 800; s.books = 3; s.shopSpent = 300;
+  L.restart(s);
+  eq(s.coins, 0, '新一局应该从 0 枚开始');
+  eq(s.coinsEarned, 0);
+  eq(s.books, 0, '图鉴是"本局永久"，换局也要清');
+  eq(s.shopSpent, 0);
 });
 
 test('时间到过关 和 主动收工 走同一套事件形状', function () {

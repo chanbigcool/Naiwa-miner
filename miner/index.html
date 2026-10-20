@@ -4,15 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#fff9f1">
-<meta name="description" content="奶蛙矿工：国民小游戏「黄金矿工」的奶蛙版。甩钩抓宝，天使是炸弹别碰，大块头会挣脱。">
+<meta name="description" content="奶蛙矿工：国民小游戏「黄金矿工」的奶蛙版。甩钩抓宝，天使奶蛙是炸弹，大块头会挣脱。">
 <title>奶蛙矿工 · 奶蛙小游戏</title>
 <link rel="icon" type="image/webp" href="../assets/nai/nai01-blob.webp">
 <!-- 资源带 ?v= 版本号：这个静态站不发 Cache-Control / ETag，只给 Last-Modified，
      浏览器会按"启发式缓存"自己算过期时间，期间新代码根本不会下载下来 ——
      表现就是"线上明明更新了，我这台电脑还是老钩子"。
      换 URL 是最干脆的绕开方式：改了前端就顺手把下面这几处 v 一起改掉。 -->
-<meta name="miner-build" content="20261020d">
-<link rel="stylesheet" href="style.css?v=20261020d">
+<meta name="miner-build" content="20261020e">
+<link rel="stylesheet" href="style.css?v=20261020e">
 </head>
 <body>
 <div class="page">
@@ -40,11 +40,11 @@
         </div>
 
         <!-- 达标 = 可以收工了。
-             这既是提示，也是按钮：达标之后玩家自己决定"现在过关"还是"再挖几钩攒小卖部的钱"。
+             这既是提示，也是按钮：达标之后玩家自己决定"现在过关"还是"再挖几钩多攒点奶蛙币"。
              （旧版达标后只能干等，是玩家反馈里最刺眼的一条。） -->
         <button class="keep-hint" id="keepHint" type="button">
           <span class="kh-tick" aria-hidden="true">✓</span>
-          <span class="kh-text">已达标 · 结余 <b id="keepNum">0</b></span>
+          <span class="kh-text"><span id="keepLead">已达标 · 本关 +</span><b id="keepNum">0</b><span id="keepTail"> 币</span></span>
           <span class="kh-go" id="keepGo">收工过关</span>
           <span class="kh-key" aria-hidden="true">Enter</span>
         </button>
@@ -79,8 +79,12 @@
           </button>
         </div>
 
-        <!-- 炸药：手里拉着东西时按一下，当场炸掉、绳子立刻回来 -->
-        <button class="dyn" id="btnDyn" type="button" aria-label="引爆炸药">
+        <!-- 左上一排：炸药 + 奶蛙币。
+             两枚并排放在同一个 flex 行里，位置只由这一行决定 ——
+             各写各的 top 会在横竖屏切换时对不齐（em 跟着舞台字号变）。 -->
+        <div class="sky-row">
+          <!-- 炸药：手里拉着东西时按一下，当场炸掉、绳子立刻回来 -->
+          <button class="dyn" id="btnDyn" type="button" aria-label="引爆手里拉住的目标">
           <span class="dyn-body">
             <svg viewBox="0 0 24 24" width="100%" height="100%" aria-hidden="true">
               <path class="dy-bomb" d="M13.4 8.6a6.2 6.2 0 1 1-3.4-1.9" fill="none" stroke-width="2.4" stroke-linecap="round"/>
@@ -90,8 +94,16 @@
             </svg>
           </span>
           <b id="dynNum">0</b>
-          <span class="dyn-tip" id="dynTip">拉着东西时按这里（或 B 键）炸药</span>
-        </button>
+          <span class="dyn-tip" id="dynTip">引爆手里拉住的目标（B 键）</span>
+          </button>
+
+          <!-- 奶蛙币：纯读数，不能点。
+               不塞进顶部 HUD 是因为五个数排成一行时，中间那格正好压在奶蛙脑袋上（横屏），
+               而且币和分挨着容易看混。单独一枚金色胶囊，更像"另一种钱"。 -->
+          <span class="coin-pill" id="coinPill" aria-hidden="true">
+            <i class="coin-dot"></i><b id="hudCoin">0</b>
+          </span>
+        </div>
 
         <!-- ========== 暂停 / 设置 ==========
              开始页去掉了：打开就开矿。这里成了唯一能喘口气、也能换难度的地方。
@@ -99,8 +111,8 @@
              这种说了不算的半吊子状态。 -->
         <div class="overlay" id="ovPause">
           <div class="ov-card">
-            <div class="ov-title">歇一会儿</div>
-            <p class="ov-sub">切走页面会自动暂停，回来接着挖。</p>
+            <div class="ov-title">暂停</div>
+            <p class="ov-sub">切到其他页面会自动暂停。</p>
 
             <div class="preset" id="preset">
               <span class="preset-label">难度</span>
@@ -108,12 +120,12 @@
               <button type="button" data-preset="standard" class="on">标准<b>×2</b></button>
               <button type="button" data-preset="hard">硬核<b>×3</b></button>
             </div>
-            <p class="preset-note">换难度会重开一局 · 结算分 = 局内分 × 倍率</p>
+            <p class="preset-note">换难度即重开一局 · 结算分 = 局内分 × 倍率</p>
             <p class="swing-note" id="swingNote"></p>
 
             <ul class="quick-rules">
-              <li><b>越大越值钱</b>，也越重、拉回来越慢</li>
-              <li>天使奶蛙是炸弹 <b class="bad">−150</b>；钻石奶蛙 <b class="good">+600</b>，还加 5 秒</li>
+              <li>体型越大越值钱，回收也越慢</li>
+              <li>天使奶蛙是炸弹 <b class="bad">−150</b>；钻石奶蛙 <b class="good">+600</b> 并 +5 秒</li>
               <li><b>空格</b>／点击放钩 · <b>B</b> 引爆 · 达标后 <b>Enter</b> 收工</li>
             </ul>
 
@@ -125,7 +137,7 @@
         <!-- ========== 过关 ========== -->
         <div class="overlay" id="ovClear">
           <div class="ov-card">
-            <div class="ov-title win" id="clearTitle">过关！</div>
+            <div class="ov-title win" id="clearTitle">过关</div>
             <p class="ov-sub" id="clearSub"></p>
             <div class="tally" id="clearTally"></div>
             <button class="btn primary big" id="btnNext" type="button">下一关</button>
@@ -150,7 +162,7 @@
               </div>
               <div class="lb-name-row" id="overNameRow">
                 <input class="lb-name-input" id="overNameInput" type="text" maxlength="8"
-                       placeholder="留个名，这条就算你的" autocomplete="off" spellcheck="false"
+                       placeholder="输入名字" autocomplete="off" spellcheck="false"
                        enterkeyhint="done" aria-label="你的名字">
                 <button class="lb-save-btn" id="btnSaveName" type="button">上榜</button>
               </div>
@@ -171,7 +183,7 @@
         <div class="overlay" id="ovBoard">
           <div class="ov-card">
             <div class="ov-title board">排行榜</div>
-            <p class="ov-sub" id="boardSub">这台设备上的成绩 · 一局记一条 · 头像随机分配</p>
+            <p class="ov-sub" id="boardSub">本机记录 · 一局一条</p>
 
             <div class="board-name">
               <span class="ava board-ava" id="boardAva" aria-hidden="true"></span>
@@ -187,7 +199,7 @@
               <button type="button" data-board="level" role="tab">关卡</button>
               <button type="button" data-board="combo" role="tab">连击</button>
             </div>
-            <p class="board-note">总分榜比的是<b>结算分</b>：局内分 × 难度倍率（轻松 1 / 标准 2 / 硬核 3）。</p>
+            <p class="board-note">总分 = <b>结算分</b>（局内分 × 难度倍率：轻松 1 / 标准 2 / 硬核 3）</p>
 
             <!-- 列表自己滚，不带着整张卡一起滚：
                  不然想关掉的时候得先把一百行滑到底。 -->
@@ -197,9 +209,9 @@
               </div>
             </div>
             <p class="board-more" id="boardMore" hidden>下滑看更多 ↓</p>
-            <p class="board-empty" id="boardEmpty">榜上还是空的 —— 打完一局就会有一条。</p>
+            <p class="board-empty" id="boardEmpty">本机暂无记录。</p>
 
-            <button class="btn primary" id="btnBoardClose" type="button">回去挖矿</button>
+            <button class="btn primary" id="btnBoardClose" type="button">返回游戏</button>
           </div>
         </div>
 
@@ -210,20 +222,20 @@
             <p class="ov-sub" id="shopSub"></p>
 
             <div class="shop-wallet">
-              <span>手里 <b id="shopWallet">0</b></span>
-              <span>门槛 <b id="shopTarget">0</b></span>
-              <span class="hl">能动用 <b id="shopBudget">0</b></span>
+              <span class="hl"><i class="coin-dot" aria-hidden="true"></i>奶蛙币 <b id="shopWallet">0</b></span>
+              <span>本局已攒 <b id="shopEarned">0</b></span>
+              <span>分数 <b id="shopScore">0</b><em>未变</em></span>
             </div>
 
             <div class="shop-list" id="shopList"></div>
 
             <p class="shop-note">
-              买的就是<b>手里的分</b>，而分就是门槛 —— 所以买得越多，达标越慢。
-              东西也<b>只顶下一关</b>，不是永久升级。<br>
-              一共花掉 <b id="shopSpent">0</b> 分 · 下一关会带 <b id="shopDyn">0</b> 发炸药。
+              奶蛙币与分数<b>分开记账</b>：消费只扣币，<b>分数不变</b>。<br>
+              币按本关收入折算（5 分 = 1 枚），换局清零。<br>
+              本局花掉 <b id="shopSpent">0</b> 枚 · 下一关带 <b id="shopDyn">0</b> 发炸药。
             </p>
 
-            <button class="btn primary big" id="btnShopGo" type="button">出发，进下一关</button>
+            <button class="btn primary big" id="btnShopGo" type="button">进入下一关</button>
           </div>
         </div>
       </div>
@@ -237,9 +249,9 @@
   </main>
 </div>
 
-<script src="../common/sfx.js?v=20261020d"></script>
-<script src="logic.js?v=20261020d"></script>
-<script src="cloud.js?v=20261020d"></script>
-<script src="game.js?v=20261020d"></script>
+<script src="../common/sfx.js?v=20261020e"></script>
+<script src="logic.js?v=20261020e"></script>
+<script src="cloud.js?v=20261020e"></script>
+<script src="game.js?v=20261020e"></script>
 </body>
 </html>

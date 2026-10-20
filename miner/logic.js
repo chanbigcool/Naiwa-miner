@@ -237,39 +237,83 @@
     DYNAMITE_MAX: 5,         // 单关最多带几发（小卖部也买不过这个上限）
     DYNAMITE_BOOM_RETURN: 1.15, // 炸掉之后回收的加速倍率（比空钩再快一点，别拖节奏）
 
-    /* —— 经济与小卖部（参考原版黄金矿工）——
-     * 三条从原版抄来的关键设计，别改：
-     *   1. 花的就是**累计分数本身**，而累计分数就是通关门槛 → "买强"和"达标"天然冲突。
-     *   2. 所有商品**只顶下一关**，不是永久升级 → 能力不复利，难度曲线稳得住。
-     *      （这也是我第一版方案里搞错的地方：永久升级会让游戏越玩越简单。）
-     *   3. 炸药是"口粮价"，别的商品贵得多 → 让你一次想买好几发的那种道具。
+    /* —— 经济与小卖部（参考原版黄金矿工，但改掉一处原版也不好玩的地方）——
      *
-     * 价格是按"一关的典型收入"定的，量法见 _qa/level.cjs（每关收入中位数）。 */
+     * 旧版花的是**累计分数本身**，而累计分数就是通关门槛。结果玩家一算账就发现：
+     * 买一个道具 = 离达标更远 = 拿命换一点小便宜，于是普遍"不买，或者只买炸药"。
+     * 这不是玩家不会算，是这套账本来就不划算 —— "花钱惩罚进度"只在小卖部
+     * 极便宜、且道具极强时才成立，而本作两样都不占。
+     *
+     * 现在改成两条平行的账：
+     *   1. **分数**只涨不跌，永远是门槛尺子；小卖部**一分都不碰**。
+     *   2. **奶蛙币**单独记，只在过关时按"这一关真赚到的分"折出来，也只在本局里花。
+     *      → 买东西不会让你离下一关更远，道具是纯收益，值得买；
+     *      → 币不跨局累积，所以也不用担心"开局前先刷币"。
+     *   3. 商品分两种作用域：scope:'level' 只顶下一关（能力不复利），
+     *      scope:'run' 是本局永久（图鉴这种"收藏"性质的，可以累加）。
+     *
+     * 价格按"一关的典型产币"标定：L3 之后每关大约 200~400 枚。 */
     SHOP_FROM_LEVEL: 3,      // 第几关起出现小卖部（前两关别打断节奏）
-    ROCKBOOK_VALUE: 60,      // 石头图鉴生效时，灰石堆的面值（原本 5）
-    DRINK_PULL_MULT: 1.35,   // 力量饮料：回收速度乘这个
+
+    COIN_RATE: 0.20,         // 产币：每 5 分本关收入 ≈ 1 枚
+    COIN_PER_COMBO: 4,       // 最高连击每 1 连，额外补几枚
+    COIN_NO_ANGEL: 20,       // 整关没撞炸弹的奖励（连击以外唯一"打得好"的硬指标）
+    COIN_MAX_PER_LEVEL: 900, // 单关产币上限，防极端局把币刷爆
+
+    BOOK_STONE_BONUS: 25,    // 石头图鉴：每本给灰石堆加多少分（可累加，本局永久）
+    BOOK_MAX: 5,             // 最多收几本 → 石头最高 5 + 25×5 = 130 分/块
+    DRINK_PULL_MULT: 1.50,   // 力量药水：回收速度乘这个（原版那种"一口下去快很多"）
+    HOURGLASS_SECONDS: 10,   // 沙漏：下一关多几秒
+    HOURGLASS_MAX: 2,        // 每关最多买几个（+20 秒封顶）
+    GUARD_MAX: 2,            // 空勾护符：每关最多带几个（几个 = 能免疫几次空勾）
 
     /* —— 安全阀 —— */
     MAX_DT: 0.05,            // 单步最大推进（秒），防止切标签页回来瞬移
   };
 
-  /* 小卖部商品表（只有三件，都是"只顶下一关"的消耗品）。
-   * 商品说明会原样显示在小卖部界面上，所以写得像人话，别堆术语。 */
+  /* 小卖部商品表。
+   *   scope: 'level' → 只顶下一关，下一关结束就没了（能力不复利）
+   *   scope: 'run'   → 本局永久，而且可以累加（图鉴）
+   *   max:   同一个作用域里最多能买几个
+   * 商品说明会原样显示在小卖部界面上，所以写得像人话，别堆术语。
+   *
+   * 三件旧的为什么被换/被改（玩家反馈：道具又贵又弱，不如不买）：
+   *   · 石头图鉴 60 分/块、900 分、只管一关 → 石头本来是最不想抓的东西，
+   *     为它花 900 分等于"倒贴钱买罪受"。现在改成**本局永久 + 可累加 + 100 币**，
+   *     而且门槛按石头原价算（见 achievableValue），所以每本书都是净赚。
+   *   · 力量饮料 1.35 → 力量药水 1.50，价格从"半关收入"降到 300 币。
+   *   · 新增两件：沙漏（加时间，原版就有）、空勾护符（空勾一次不断连击，
+   *     专治"手抖一下，8 连的 ×4 直接归零"—— 这是本作自己的痛点，原版没有）。 */
   var SHOP_ITEMS = [
     {
-      key: 'dynamite', name: '炸药', tag: '口粮', price: 450, unit: '发',
-      desc: '下一关多发 1 发。拉不动的石头、不想碰的炸弹，当场炸掉。',
-      hint: '手里拉着东西时点左边那个炸药按钮。',
+      key: 'dynamite', name: '炸药', tag: '常备', price: 60, unit: '发',
+      scope: 'level', max: 5,
+      desc: '下一关多发 1 发，可引爆手里拉住的目标。',
+      hint: '引爆后目标消失、钩子立刻收回，不加分。',
     },
     {
-      key: 'rockbook', name: '石头图鉴', tag: '改规则', price: 900,
-      desc: '下一关灰石堆从 5 分变 60 分 —— 垃圾变成正经收入。',
-      hint: '本来是纯亏的石头，这一关值得专门去挖。',
+      key: 'rockbook', name: '石头图鉴', tag: '可累加', price: 100, unit: '本',
+      scope: 'run', max: 5,
+      desc: '灰石堆每块 +25 分，本局永久，可叠加，最多 5 本。',
+      hint: '5 本时每块 130 分；门槛仍按原价 5 分计。',
     },
     {
-      key: 'drink', name: '力量饮料', tag: '加速', price: 1200,
-      desc: '下一关回收速度快 35%，同样的时间能多叼好几个。',
-      hint: '石头那种死沉的东西也会好拖很多。',
+      key: 'drink', name: '力量药水', tag: '加速', price: 300, unit: '瓶',
+      scope: 'level', max: 1,
+      desc: '下一关回收速度 +50%。',
+      hint: '目标越重，省下的时间越多。',
+    },
+    {
+      key: 'hourglass', name: '沙漏', tag: '加时', price: 240, unit: '个',
+      scope: 'level', max: 2,
+      desc: '下一关 +10 秒，最多 2 个（合计 +20 秒）。',
+      hint: '时间归零即失败。',
+    },
+    {
+      key: 'guard', name: '空勾护符', tag: '保连击', price: 280, unit: '个',
+      scope: 'level', max: 2,
+      desc: '连击 ≥×2 时，空勾不清零，最多 2 个。',
+      hint: '连击未到 ×2 时不消耗。',
     },
   ];
 
@@ -475,14 +519,33 @@
     return Math.min(cfg.DYNAMITE_MAX, n + bought);
   }
 
-  /* 建立一件物品时的面值：石头图鉴生效时，灰石堆从 5 分变 60 分。
-   * 注意 achievableValue() 是直接累加 item.value 的，所以目标分会自动跟着变，
-   * 不需要在别处再补一次 —— 只在"进下一关"那一刻算一次就够了。 */
-  function itemWorth(state, type) {
-    if (state.buffs && state.buffs.rockbook && type === 'stone') {
-      return state.cfg.ROCKBOOK_VALUE;
+  /* 本关的总时长（含沙漏）。进度条和"还剩几秒"都按它换算 ——
+   * 否则带了沙漏的关，进度条一开局就是满的，看着像已经超时了。 */
+  function levelTimeFull(state) {
+    var add = 0;
+    if (state.buffs && state.buffs.hourglass) {
+      add = Math.min(state.buffs.hourglass, state.cfg.HOURGLASS_MAX || 0) *
+            (state.cfg.HOURGLASS_SECONDS || 0);
     }
-    return itemValue(type, state.rng);
+    return state.cfg.LEVEL_TIME + add;
+  }
+
+  /* 石头图鉴的加成：每本 +BOOK_STONE_BONUS，本局永久。
+   * 它是**累加**的（收 5 本 = 5 + 125 = 130 分/块），所以价格不必跟着涨，
+   * 数量上限本身就是刹车。 */
+  function rockbookBonus(state) {
+    if (!state || !state.cfg) { return 0; }
+    var n = Math.min(state.books || 0, state.cfg.BOOK_MAX || 0);
+    return n * (state.cfg.BOOK_STONE_BONUS || 0);
+  }
+
+  /* 抛光剂那类"提价"道具已经砍掉（玩家反馈堆数值不如改机制）。
+   * 这里只留图鉴一条加成 —— 它是唯一会改物品面值的东西，所以只有它需要配合
+   * achievableValue 的"按原价算门槛"。道具以后要加，最好也走"改机制"这条路。 */
+  function itemWorth(state, type, base) {
+    if (typeof base !== 'number') { base = itemValue(type, state.rng); }
+    if (type === 'stone') { return base + rockbookBonus(state); }
+    return base;
   }
 
   /* 钩子的摆动角度。这是整个手感的核心，见 CONFIG 里 SWING_MODE 的说明。 */
@@ -618,6 +681,9 @@
 
   /* 造一个物品实体（会被挣脱的会用它记 homeX/homeY） */
   function makeItem(state, type, def, x, y, id) {
+    /* 掷一次原价，再算 buff 后的实际面值。
+     * baseValue 只服务于门槛计算（achievableValue），渲染和结算都用 value。 */
+    var base = itemValue(type, state.rng);
     return {
       id: id,
       type: type,
@@ -631,7 +697,8 @@
       homeX: x,              // 被挣脱后掉回原位
       homeY: y,
       weight: def.weight,
-      value: itemWorth(state, type),
+      baseValue: base,       // 原价（门槛用这个，不吃任何 buff）
+      value: itemWorth(state, type, base),
       isStone: !!def.isStone,
       isAngel: !!def.isAngel,
       timeBonus: def.timeBonus || 0,
@@ -763,12 +830,18 @@
     return items;
   }
 
-  /* 本关"理论最高可得"（只算正收益），用来自适应地算目标分 */
+  /* 本关"理论最高可得"（只算正收益），用来自适应地算目标分。
+   *
+   * 一律按 **baseValue（原价）** 算，不吃石头图鉴的加成：
+   *   · 提价类道具如果顺手把门槛也提上去，玩家等于白花钱 —— 旧版图鉴就是这么废掉的。
+   *   · 门槛是"这一关欠多少活"，跟玩家买了什么道具无关，这也更好解释。
+   * 兼容没有 baseValue 的老物品（老存档 / 测试手搓的对象）。 */
   function achievableValue(items) {
     var sum = 0;
     for (var i = 0; i < items.length; i++) {
       var it = items[i];
-      if (it.value > 0) { sum += it.value; }
+      var v = (typeof it.baseValue === 'number') ? it.baseValue : it.value;
+      if (v > 0) { sum += v; }
     }
     return sum;
   }
@@ -862,15 +935,23 @@
       items: [],
 
       /* —— 经济 ——
-       * score 就是钱：它既是通关门槛，也是小卖部里的钱。
-       * 花钱会把手里的分数压下去 → "买强"和"达标"天然冲突（从原版抄来的张力）。 */
+       * 两条平行的账，别把它们混起来：
+       *   score  分数：只涨不跌，唯一的门槛尺子。小卖部一分都不碰。
+       *   coins  奶蛙币：过关时按本关收入折出来，只在小卖部花，换一局清零。
+       * 分开记账最直接的好处：买东西不再让自己离达标更远，
+       * 于是"买不买"变成一个纯收益判断，而不是"要不要牺牲进度"。 */
+      coins: 0,              // 奶蛙币余额（本局）
+      coinsEarned: 0,        // 本局一共产出多少币（结算面板用）
+      books: 0,              // 石头图鉴收了几本（本局永久，可累加）
       buffs: {},             // 本关生效的 buff（只顶一关）
       pending: {},           // 小卖部刚买、还没开打的 buff
-      shopSpent: 0,          // 一共在小卖部花了多少
+      shopSpent: 0,          // 一共在小卖部花了多少**币**
+      coinLevel: 0,          // 已经发过币的关卡号（防止同一关重复结算）
       dynamite: 0,           // 本关剩余炸药
       boomBoost: false,      // 刚炸过 → 这一趟回收再快一点（别拖节奏）
 
       shots: 0, hits: 0, escapes: 0, angels: 0, bombs: 0,
+      guardSaves: 0,         // 空勾护符一共救回几次连击（本局累计）
       floaters: [],          // 飘字（渲染用，逻辑只负责生成）
       shake: 0,              // 屏幕震动强度（渲染用）
       lastEventT: 0,
@@ -889,16 +970,18 @@
     state.score = 0;
     state.target = 0;
     state.levelStartScore = 0;
-    state.timeLeft = cfg.LEVEL_TIME;
     state.angle = 0; state.swingClock = 0; state.returning = false;
     state.ropeLen = cfg.ROPE_IDLE_LEN;
     state.hook = { x: cfg.MINER_X, y: cfg.MINER_Y + cfg.ROPE_IDLE_LEN };
     state.held = null; state.pullT = 0; state.grabbedThisShot = false; state.escapeAtLen = 0;
     state.combo = 0; state.comboBest = 0;
     state.shots = 0; state.hits = 0; state.escapes = 0; state.angels = 0; state.bombs = 0;
+    state.guardSaves = 0;
     state.buffs = {}; state.pending = {}; state.shopSpent = 0;
+    state.coins = 0; state.coinsEarned = 0; state.books = 0; state.coinLevel = 0;
     state.floaters = []; state.shake = 0;
     applyLevelTuning(state);
+    state.timeLeft = levelTimeFull(state);
     state.items = buildItems(state, 1);
     setTarget(state, 1, state.items);
     state.dynamite = dynamiteFor(state, 1);
@@ -910,7 +993,7 @@
     if (state.phase !== 'ready') { return []; }
     var cfg = state.cfg;
     state.phase = 'swinging';
-    state.timeLeft = cfg.LEVEL_TIME;
+    state.timeLeft = levelTimeFull(state);
     state.levelStartScore = state.score;
     state.combo = 0;
     state.swingClock = 0;
@@ -935,7 +1018,7 @@
     state.pending = {};
 
     applyLevelTuning(state);
-    state.timeLeft = cfg.LEVEL_TIME;
+    state.timeLeft = levelTimeFull(state);
     state.levelStartScore = state.score;
     state.combo = 0;
     state.held = null; state.pullT = 0; state.escapeAtLen = 0;
@@ -1040,12 +1123,33 @@
   /* =====================================================================
    * 7b. 小卖部（经济）
    * -------------------------------------------------------------------
-   * 三条从原版抄来的规矩：
-   *   · 花的就是**累计分数本身**，而累计分数就是通关门槛 → 买强和达标天然冲突
-   *   · 商品只顶下一关，不是永久升级 → 能力不复利
-   *   · 不许把自己买到"低于已经通过的门槛"以下（方案 B）
-   *     保留"花钱会推迟进度"的张力，但不会让你直接掉进死局
+   * 规矩（和旧版最大的区别就是第一条）：
+   *   · 花的是**奶蛙币**，不是分数 → 买强和达标彻底脱钩，道具是净收益
+   *   · 商品分两种作用域：只顶下一关（消耗品）/ 本局永久（图鉴）
+   *   · 币只在本局内累计，换一局清零 → 不用"开局前刷币"
    * ===================================================================== */
+
+  /* 这一关该发多少币。按"本关自己赚到的分"折，所以打得好 = 买得起。 */
+  function coinGainOf(state) {
+    var cfg = state.cfg;
+    var gain = Math.max(0, state.score - state.levelStartScore);
+    var c = Math.floor(gain * cfg.COIN_RATE)
+          + Math.max(0, state.comboBest || 0) * cfg.COIN_PER_COMBO
+          + (state.angels === 0 ? cfg.COIN_NO_ANGEL : 0);
+    return Math.min(cfg.COIN_MAX_PER_LEVEL, Math.max(0, c));
+  }
+
+  /* 发币（同一关只发一次）。
+   * 过关有两条路径（打满时间 / 主动收工），都走 levelClearEvent；
+   * 用 coinLevel 记一下，免得以后哪条路径多调一次就把币发双份。 */
+  function awardCoins(state) {
+    if (state.coinLevel === state.level) { return 0; }
+    state.coinLevel = state.level;
+    var c = coinGainOf(state);
+    state.coins = (state.coins || 0) + c;
+    state.coinsEarned = (state.coinsEarned || 0) + c;
+    return c;
+  }
 
   function shopItem(key) {
     for (var i = 0; i < SHOP_ITEMS.length; i++) {
@@ -1058,29 +1162,42 @@
   function canBuy(state, key) {
     var item = shopItem(key);
     if (!item) { return { ok: false, reason: '没有这件商品' }; }
-    if (state.score - item.price < state.target) {
+
+    var owned = item.scope === 'run' ? (state.books || 0) : (state.pending[key] || 0);
+    if (owned >= item.max) {
       return {
-        ok: false, item: item,
-        reason: '买完就只剩 ' + (state.score - item.price) + ' 分，低于 ' + state.target + ' 的门槛了',
+        ok: false, item: item, owned: owned,
+        reason: item.scope === 'run' ? '已收满 ' + item.max + ' 本'
+                                     : '本关限购 ' + item.max + ' 个',
       };
     }
-    return { ok: true, item: item };
+    if ((state.coins || 0) < item.price) {
+      return {
+        ok: false, item: item, owned: owned,
+        reason: '奶蛙币不足，还差 ' + (item.price - (state.coins || 0)) + ' 枚',
+      };
+    }
+    return { ok: true, item: item, owned: owned };
   }
 
-  /* 买一件：扣分、记到 pending（下一关生效）。
-   * 注意 buff 是**累加**的：炸药可以连买几发。 */
+  /* 买一件：扣币，不碰分数。累加型商品直接写进对应容器。 */
   function buy(state, key) {
     var c = canBuy(state, key);
     if (!c.ok) { return { ok: false, reason: c.reason, item: c.item || null }; }
 
-    state.score -= c.item.price;
+    state.coins -= c.item.price;
     state.shopSpent += c.item.price;
-    state.pending[key] = (state.pending[key] || 0) + 1;
+
+    if (c.item.scope === 'run') {
+      state.books = Math.min(c.item.max, (state.books || 0) + 1);
+    } else {
+      state.pending[key] = (state.pending[key] || 0) + 1;
+    }
 
     return {
-      ok: true, item: c.item, score: state.score,
-      count: state.pending[key],
-      left: state.score - state.target,       // 还能花多少（界面用来置灰按钮）
+      ok: true, item: c.item, coins: state.coins, score: state.score,
+      count: c.item.scope === 'run' ? state.books : state.pending[key],
+      left: state.coins,                  // 还能花多少（界面用来置灰按钮）
     };
   }
 
@@ -1091,16 +1208,22 @@
 
   /* 小卖部界面要显示的东西：商品 + 当前能不能买 + 下一关炸药总数（预览） */
   function shopView(state) {
-    var view = { open: shopOpen(state), budget: state.score - state.target,
-      spentNow: 0, items: [] };
+    var view = {
+      open: shopOpen(state),
+      coins: state.coins || 0,
+      earned: state.coinsEarned || 0,
+      score: state.score,          // 只用来在界面上说"分数一分没动"
+      books: state.books || 0,
+      spent: state.shopSpent || 0,
+      items: [],
+    };
     for (var i = 0; i < SHOP_ITEMS.length; i++) {
       var it = SHOP_ITEMS[i];
       var c = canBuy(state, it.key);
       view.items.push({
         key: it.key, name: it.name, tag: it.tag, price: it.price, unit: it.unit || '',
-        desc: it.desc, hint: it.hint,
-        owned: state.pending[it.key] || 0,
-        canBuy: c.ok, reason: c.reason,
+        desc: it.desc, hint: it.hint, scope: it.scope, max: it.max,
+        owned: c.owned, canBuy: c.ok, reason: c.reason,
       });
     }
     // 下一关会带几发炸药：把 pending 里的炸药临时算进去（给界面预览用）
@@ -1140,14 +1263,18 @@
   }
 
   /* 过关事件的统一载荷：时间到过关 和 主动收工 走同一个形状，
-   * 上层（结算面板 / 小卖部）不用分两套。cashedOut 只是给文案用的。 */
+   * 上层（结算面板 / 小卖部）不用分两套。cashedOut 只是给文案用的。
+   * 币在这里发（只发一次），事件里同时带"这一关赚了多少币"和"现在有多少币"。 */
   function levelClearEvent(state, cashedOut) {
+    var coinsGain = awardCoins(state);
     return {
       type: 'levelClear', cashedOut: !!cashedOut,
       level: state.level, score: state.score, target: state.target,
       levelGain: state.score - state.levelStartScore,
       comboBest: state.comboBest, escapes: state.escapes, angels: state.angels,
       bombs: state.bombs, shopSpent: state.shopSpent,
+      guardSaves: state.guardSaves || 0,
+      coinsGain: coinsGain, coins: state.coins, books: state.books || 0,
       timeLeft: state.timeLeft,
     };
   }
@@ -1177,6 +1304,25 @@
     if (!it) {
       // 抓空：连击清零，节奏上不额外惩罚
       if (!state.grabbedThisShot) {
+        /* 空勾护符：这一关还有存货，就先吃掉一次空勾，连击照旧。
+         * 为什么值得卖钱：连击直接决定得分倍率（3 连 ×2、6 连 ×3、9 连 ×4），
+         * 一钩子钩空把 ×4 打回 ×1，损失的分数远不止 280。所以它是"保险"而不是"加强"，
+         * 也正好补上一个旧小卖部完全没有的位子：**给高手止损**。
+         *
+         * 只在"连击真的在赚钱"时才触发（≥ COMBO_PER_MULT，也就是已经 ×2 以上）。
+         * 0/1/2 连断了不丢分，这时候吃掉一枚 280 的护符是纯亏 ——
+         * 旧写法不看连击，买完第一次空勾就报销，等于把道具扔了。
+         *
+         * 边界：自己炸掉的那一趟，grabbedThisShot 已经是 true，根本走不到这里。 */
+        var guard = (state.buffs && state.buffs.guard) ? state.buffs.guard : 0;
+        var armed = state.combo >= (state.cfg.COMBO_PER_MULT || 3);
+        if (guard > 0 && armed) {
+          state.buffs.guard = guard - 1;
+          state.guardSaves = (state.guardSaves || 0) + 1;
+          pushFloat(state, state.cfg.MINER_X, state.cfg.MINER_Y - 10, '连击保留', 'guard');
+          ev.push({ type: 'missSaved', combo: state.combo, left: state.buffs.guard });
+          return;
+        }
         state.combo = 0;
         ev.push({ type: 'empty', combo: state.combo });
       }
@@ -1391,6 +1537,9 @@
           levelGain: state.score - state.levelStartScore,
           comboBest: state.comboBest, escapes: state.escapes, angels: state.angels,
           bombs: state.bombs, shopSpent: state.shopSpent,
+          guardSaves: state.guardSaves || 0,
+          coins: state.coins || 0, coinsEarned: state.coinsEarned || 0,
+          books: state.books || 0,
         });
       }
     }
@@ -1419,7 +1568,7 @@
   }
 
   function timeRatio(state) {
-    var full = state.cfg.LEVEL_TIME;
+    var full = levelTimeFull(state);
     return full > 0 ? clamp(state.timeLeft / full, 0, 1) : 0;
   }
 
@@ -1731,6 +1880,9 @@
     shopView: shopView,
     canBuy: canBuy,
     buy: buy,
+    coinGainOf: coinGainOf,
+    awardCoins: awardCoins,
+    rockbookBonus: rockbookBonus,
 
     /* —— 收工 —— */
     canCashOut: canCashOut,
@@ -1754,6 +1906,7 @@
     pullSpeedOf: pullSpeedOf,
     earnRateOf: earnRateOf,
     dynamiteFor: dynamiteFor,
+    levelTimeFull: levelTimeFull,
     achievableValue: achievableValue,
     recipe: recipe,
     buildItems: buildItems,

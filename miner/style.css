@@ -81,10 +81,26 @@ body {
   color: #4a3325; text-shadow: 0 1px 0 rgba(255, 255, 255, .9);
   font-variant-numeric: tabular-nums;
 }
-.stat small { font-size: .68em; color: var(--ink-soft); margin-top: .15em; }
+.stat small { font-size: .68em; color: var(--ink-soft); margin-top: .15em; text-shadow: 0 1px 2px rgba(255, 255, 255, .95); }
 .stat.time b { color: var(--gold-dark); }
 .stat.time.urgent b { color: var(--bad); }
 .stat.time.urgent { animation: breathe .7s ease-in-out infinite; }
+/* 奶蛙币：和分数明显分开的一档颜色，别让人以为它也是分 */
+.stat.coin b { color: #c98a1e; }
+.stat.coin small { color: #c98a1e; }
+
+/* 奶蛙币胶囊：挂在炸药下面，纯读数。
+ * 位置跟炸药同一条左列（都在"天空"里，不会盖住土层里的东西）。 */
+.coin-pill {
+  display: flex; align-items: center; gap: .18em;
+  padding: .42em .62em .42em .55em; border-radius: 99px;
+  background: rgba(255, 251, 240, .94);
+  box-shadow: 0 6px 16px rgba(126, 84, 44, .18);
+  font-size: .95em; font-weight: 800; color: #bd7c12;
+  font-variant-numeric: tabular-nums;
+}
+.coin-pill .coin-dot { width: .78em; height: .78em; margin-right: 0; }
+.coin-pill.bump { animation: pop .3s ease-out; }
 
 .bar {
   margin-top: 0.35em; height: 0.55em; border-radius: 99px;
@@ -121,6 +137,11 @@ body {
   padding: .1em .45em; border-radius: 99px; margin-left: .15em;
 }
 .combo-chip.hot { animation: pop .28s ease-out; }
+/* 空勾护符生效：连击牌闪一下金边，告诉玩家"这一下没断，是护符顶的" */
+.combo-chip.saved {
+  box-shadow: 0 0 0 2px var(--gold), 0 6px 16px rgba(126, 84, 44, .18);
+  animation: pop .3s ease-out;
+}
 
 /* ---------- 右上工具（排行榜 / 暂停）----------
  * 和左上的静音、炸药同一套白药丸：圆角、浅投影、压在天空层。
@@ -165,11 +186,16 @@ body {
 
 /* ---------- 炸药 ---------- */
 /*
- * 放在静音下面，都在"天空"里（天空没有可抓的东西），
+ * 和奶蛙币并排放在 .sky-row 里，都在"天空"（天空没有可抓的东西），
  * 这样按钮绝不会盖住土层里的宝物导致误抓。
+ * 行负责定位，按钮自己不再绝对定位 —— 否则两个 top 在横竖屏切换时会错位。
  */
-.dyn {
+.sky-row {
   position: absolute; left: 0.7em; top: 7.1em;
+  display: flex; align-items: center; gap: .34em;
+}
+.dyn {
+  position: relative;
   display: flex; align-items: center; gap: .12em;
   padding: .3em .55em .3em .3em; border: 0; cursor: pointer;
   border-radius: 99px;
@@ -238,7 +264,9 @@ body {
   box-shadow: 0 6px 16px rgba(0, 0, 0, .22);
   cursor: default; animation: none;
 }
-.keep-hint.locked .kh-go { background: rgba(255, 255, 255, .18); color: #eef2f6; }
+/* 锁定态不是"已达标"：勾和"收工"都不该出现，只留一句还差多少分 */
+.keep-hint.locked .kh-tick,
+.keep-hint.locked .kh-go { display: none; }
 .keep-hint.locked .kh-key { display: none; }
 .kh-tick { font-size: 1.05em; line-height: 1; }
 .kh-go {
@@ -385,6 +413,7 @@ body {
 }
 .tally span b { font-size: 1.25em; color: var(--ink); font-variant-numeric: tabular-nums; }
 .tally span.good b { color: var(--good); }
+.tally span.coin b { color: #c98a1e; }
 .tally span.bad b { color: var(--bad); }
 
 .foot {
@@ -406,7 +435,7 @@ body {
   -webkit-background-clip: text; background-clip: text;
 }
 .shop-wallet {
-  display: flex; justify-content: space-between; gap: .4em;
+  display: flex; align-items: center; justify-content: space-between; gap: .4em;
   margin: 0 0 .7em; padding: .42em .6em; border-radius: .6em;
   background: rgba(126, 84, 44, .08);
   font-size: .74em; color: var(--ink-soft);
@@ -414,6 +443,15 @@ body {
 .shop-wallet b { color: var(--ink); font-variant-numeric: tabular-nums; }
 .shop-wallet .hl { color: var(--gold-dark); }
 .shop-wallet .hl b { color: var(--gold-dark); }
+.shop-wallet em { font-style: normal; font-size: .86em; color: var(--good); margin-left: .22em; }
+
+/* 一枚"币"的小图标：界面里所有价格前都挂它，和分数区分开 */
+.coin-dot {
+  display: inline-block; width: .72em; height: .72em; margin-right: .22em;
+  border-radius: 50%; vertical-align: -.06em;
+  background: radial-gradient(circle at 34% 30%, #fff3c4, #f5c445 55%, #d08a12);
+  box-shadow: inset 0 0 0 .08em rgba(160, 100, 10, .35);
+}
 
 .shop-list { display: grid; grid-template-columns: 1fr; gap: .5em; margin: 0 0 .7em; text-align: left; }
 .shop-item {
@@ -423,7 +461,7 @@ body {
   border: 1px solid rgba(126, 84, 44, .1);
 }
 .shop-item.off { opacity: .62; }
-.si-head { display: flex; align-items: center; gap: .4em; }
+.si-head { display: flex; align-items: center; gap: .4em; flex-wrap: wrap; }
 .si-head b { font-size: .86em; font-weight: 700; }
 .si-tag {
   font-style: normal; font-size: .62em; font-weight: 700; color: #fff;
@@ -435,16 +473,22 @@ body {
   margin-left: auto; font-size: .84em; font-weight: 700; color: var(--gold-dark);
   font-variant-numeric: tabular-nums;
 }
-.si-price i { font-style: normal; font-size: .78em; margin-right: .05em; }
-.si-desc { margin: .35em 0 0; font-size: .72em; line-height: 1.6; color: var(--ink); }
-.si-hint { margin: .2em 0 0; font-size: .66em; line-height: 1.55; color: var(--ink-soft); }
-.si-why { margin: .22em 0 0; font-size: .66em; line-height: 1.5; color: var(--bad); }
+.si-price i {
+  display: inline-block; width: .62em; height: .62em; margin-right: .18em;
+  border-radius: 50%; vertical-align: -.04em;
+  background: radial-gradient(circle at 34% 30%, #fff3c4, #f5c445 55%, #d08a12);
+  box-shadow: inset 0 0 0 .07em rgba(160, 100, 10, .35);
+}
+.si-desc { margin: .3em 0 0; font-size: .72em; line-height: 1.55; color: var(--ink); }
+.si-hint { margin: .12em 0 0; font-size: .66em; line-height: 1.5; color: var(--ink-soft); }
+.si-why { margin: .18em 0 0; font-size: .66em; line-height: 1.5; color: var(--bad); }
+/* 买按钮在标题行右边，是一枚胶囊而不是整行大按钮 —— 五件商品才塞得下 */
 .si-buy {
-  display: block; width: 100%; margin-top: .5em;
-  font: inherit; font-size: .76em; font-weight: 700; letter-spacing: .04em;
-  padding: .42em 1em; border: 0; border-radius: .6em; cursor: pointer;
+  flex: 0 0 auto; margin-left: .45em;
+  font: inherit; font-size: .74em; font-weight: 700; letter-spacing: .04em;
+  padding: .34em .9em; border: 0; border-radius: 99px; cursor: pointer;
   color: #fff; background: linear-gradient(135deg, #ffb347, #e8912a);
-  box-shadow: 0 6px 14px rgba(232, 145, 42, .3);
+  box-shadow: 0 4px 10px rgba(232, 145, 42, .28);
   transition: transform .16s cubic-bezier(.22, 1, .36, 1), box-shadow .16s;
 }
 .si-buy:active { transform: scale(.97); }
@@ -457,6 +501,11 @@ body {
   color: var(--ink-soft); text-align: left;
 }
 .shop-note b { color: var(--gold-dark); }
+
+/* 五件商品在小屏上仍可能超高：钱包和「出发」始终留在卡里，只有清单自己滚。
+ * 没有这层兜底时，375×667 的老机器上最后一件商品会被推到卡外。 */
+#ovShop .ov-card { display: flex; flex-direction: column; overflow: hidden; }
+#ovShop .shop-list { flex: 0 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 
 /* ---------- 排行榜 ----------
  * 两个入口共用一套视觉：开始页底部一枚胶囊（排行榜），结算卡上一块上榜区。

@@ -85,6 +85,26 @@ console.log('  脚本/样式上的 v  : ' + (version.vers.length ? version.vers.
 if (version.missing.length) { console.log('  没带 ?v= 的标签   : ' + version.missing.join(', ')); }
 console.log('  → ' + (version.ok ? '一致' : '不一致（同一次部署里混了两个版本，必须修）'));
 
+/* 根路径必须"落地即开局"：
+ * 集合页删掉之后，根 index.html 只剩一张跳转卡。这条检查防的是
+ * "跳转被改回旧集合页 / 跳到不存在的路径"—— 用户打开站点第一眼就是它。 */
+function checkEntry() {
+  let html = '';
+  try { html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8'); } catch (e) {
+    return { ok: false, note: '找不到 index.html' };
+  }
+  const meta = /http-equiv="refresh"[^>]*content="[^"]*url=([^";\s]+)"/i.exec(html);
+  const js = /location\.replace\(\s*'([^']+)'/.exec(html);
+  const targets = [meta && meta[1], js && js[1]].filter(Boolean);
+  const ok = targets.length > 0 && targets.every((t) => t.indexOf('miner/') === 0);
+  return { ok, note: targets.length ? targets.join(' / ') : '没有跳转' };
+}
+
+const entry = checkEntry();
+console.log('\n根路径入口');
+console.log('  跳转目标 : ' + entry.note);
+console.log('  → ' + (entry.ok ? '直接进 miner/' : '不对（根路径必须落到 miner/）'));
+
 const seen = new Map();
 for (const page of PAGES) {
   for (const r of refsOf(page)) {

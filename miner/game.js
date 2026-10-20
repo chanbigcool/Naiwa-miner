@@ -32,12 +32,16 @@
     target: document.getElementById('hudTarget'),
     level: document.getElementById('hudLevel'),
     time: document.getElementById('hudTime'),
+    coin: document.getElementById('hudCoin'),
+    coinPill: document.getElementById('coinPill'),
     bar: document.getElementById('barFill'),
     combo: document.getElementById('comboChip'),
     comboNum: document.getElementById('comboNum'),
     comboMult: document.getElementById('comboMult'),
     keep: document.getElementById('keepHint'),
     keepNum: document.getElementById('keepNum'),
+    keepLead: document.getElementById('keepLead'),
+    keepTail: document.getElementById('keepTail'),
     keepGo: document.getElementById('keepGo'),
     mute: document.getElementById('btnMute'),
     dyn: document.getElementById('btnDyn'),
@@ -67,8 +71,8 @@
 
     shopSub: document.getElementById('shopSub'),
     shopWallet: document.getElementById('shopWallet'),
-    shopTarget: document.getElementById('shopTarget'),
-    shopBudget: document.getElementById('shopBudget'),
+    shopEarned: document.getElementById('shopEarned'),
+    shopScore: document.getElementById('shopScore'),
     shopList: document.getElementById('shopList'),
     shopSpent: document.getElementById('shopSpent'),
     shopDyn: document.getElementById('shopDyn'),
@@ -1043,6 +1047,15 @@
         if (SFX) { SFX.tone(220, 0.09, 'sine', 0.16, 150); }
       }
 
+      /* 空勾护符生效：别用"失败"的音效 —— 这是一次被买回来的机会，
+       * 所以给它一个上扬的小音阶，和连击牌闪一下。 */
+      else if (e.type === 'missSaved') {
+        if (SFX) { SFX.clear(3); }
+        burst(C.MINER_X, C.MINER_Y - 14, 14, ['#ffe9a8', '#ffd24a', '#bfe3ff'], 220, 0.55);
+        el.combo.classList.add('saved');
+        setTimeout(function () { el.combo.classList.remove('saved'); }, 620);
+      }
+
       else if (e.type === 'boom') {
         if (SFX) { SFX.bad(); SFX.noise && SFX.noise(0.22, 0.5); }
         burst(e.x, e.y, 34, ['#ffe9a8', '#ffb347', '#ff6b3d', '#6b4a2f'], 380, 0.75);
@@ -1110,6 +1123,18 @@
     el.score.textContent = game.score;
     el.target.textContent = game.target;
     el.level.textContent = game.level;
+    /* 奶蛙币涨了就"弹"一下 —— 它不在 HUD 那一排里，不弹一下很容易被漏看。 */
+    if (el.coin) {
+      var c = game.coins || 0;
+      if (el.coin.textContent !== String(c)) {
+        el.coin.textContent = c;
+        if (el.coinPill) {
+          el.coinPill.classList.remove('bump');
+          void el.coinPill.offsetWidth;   // 强制重排，动画才会重播
+          el.coinPill.classList.add('bump');
+        }
+      }
+    }
 
     var t = Math.ceil(game.timeLeft);
     if (el.time.textContent !== String(t)) { el.time.textContent = t; }
@@ -1124,8 +1149,9 @@
      * 这是这轮针对玩家那句"我直接不操作进下一关"的结构性解法：
      * 旧版达标之后只能干等（继续挖只承担天使扣分的风险，收益还是零），
      * 于是理性打法就是停手发呆。现在达标那一刻，"收工"亮起 ——
-     * 玩家自己决定是现在过关，还是多挖几钩给小卖部攒钱。
-     * 空转从"被迫"变成了"自选"。
+     * 玩家自己决定是现在过关，还是多挖几钩多攒点奶蛙币。
+     * 空转从"被迫"变成了"自选"。（币这条线建起来之后，"继续挖"才真正有回报：
+     * 以前多挖出来的分只是小卖部的预算，现在直接按比例变成币。）
      *
      * 只在关卡进行中显示：结算面板/小卖部已经盖在上面了，
      * 这时候再挂一个可点的按钮纯属添乱（实测点上去还会漏到浮层底下）。 */
@@ -1139,12 +1165,18 @@
        * 所以那一种情况把按钮锁上并说明还差多少 —— 别让玩家对着满格进度条纳闷。 */
       var locked = gap > 0;
       el.keep.classList.toggle('locked', locked);
-      el.keepNum.textContent = Math.max(0, game.score - game.target);
-      if (locked) {
-        el.keepGo.textContent = '再赚 ' + gap + ' 分可收工';
-      } else {
-        el.keepGo.textContent = shopWillOpen() ? '收工进小卖部' : '收工过关';
-      }
+      /* 两种状态的措辞必须互斥：
+       *   已达标 → "已达标 · 本关 +N 币"（N 是这关攒到的币）
+       *   锁着   → "本关还差 N 分"（N 是差的分）
+       * 以前锁定态还挂着"已达标"的前缀，两句话自相矛盾。 */
+      var cg = L.coinGainOf(game);
+      var lead = locked ? '本关还差 ' : '已达标 · 本关 +';
+      var tail = locked ? ' 分' : ' 币';
+      var num = locked ? gap : cg;
+      if (el.keepLead.textContent !== lead) { el.keepLead.textContent = lead; }
+      if (el.keepNum.textContent !== String(num)) { el.keepNum.textContent = num; }
+      if (el.keepTail.textContent !== tail) { el.keepTail.textContent = tail; }
+      el.keepGo.textContent = locked ? '' : (shopWillOpen() ? '收工进小卖部' : '收工过关');
     }
 
     if (game.combo >= 2) {
@@ -1240,15 +1272,15 @@
   function paintBoardSub() {
     if (el.boardSub) {
       el.boardSub.textContent = cloudOn()
-        ? '全服榜 · 共 ' + fmt(cloudCount) + ' 条 · 不登录也能上榜'
+        ? '全服榜 · 共 ' + fmt(cloudCount) + ' 条记录'
         : (cloudState === 'offline'
-          ? '连不上云服务 · 先看这台设备的成绩'
-          : '这台设备上的成绩 · 一局记一条 · 头像随机分配');
+          ? '云端不可用 · 显示本机记录'
+          : '本机记录 · 一局一条');
     }
     if (el.boardEmpty) {
       el.boardEmpty.textContent = cloudOn()
-        ? '全服榜还是空的 —— 打完一局，你就是第一个。'
-        : '榜上还是空的 —— 打完一局就会有一条。';
+        ? '全服榜暂无记录。'
+        : '本机暂无记录。';
     }
   }
 
@@ -1337,18 +1369,18 @@
     if (!rank) {
       el.overRankBadge.textContent = live ? '前 ' + L.BOARD_VIEW + ' 外' : '未上榜';
       if (!rec) {
-        el.overRankTxt.textContent = '这局没打出成绩，先不上榜。';
+        el.overRankTxt.textContent = '本局无成绩，未上榜。';
       } else if (live) {
         el.overRankTxt.textContent = rec.named
-          ? '这局没进全服前 ' + L.BOARD_VIEW + ' 名。'
-          : '起个名才会上榜 —— 全服榜按名字认人。';
+          ? '未进全服前 ' + L.BOARD_VIEW + ' 名。'
+          : '署名后进入全服榜。';
       } else {
-        el.overRankTxt.textContent = '这局没挤进前 ' + L.BOARD_LIMIT + ' 条。';
+        el.overRankTxt.textContent = '未进本机前 ' + L.BOARD_LIMIT + ' 条。';
       }
     } else {
       el.overRankBadge.textContent = '#' + rank;
       el.overRankTxt.innerHTML = (lastRunBest && rank === 1)
-        ? (live ? '全服第 <b>1</b> 名 · 新纪录！' : '本机第 <b>1</b> 名 · 新纪录！')
+        ? (live ? '全服第 <b>1</b> · 新纪录' : '本机第 <b>1</b> · 新纪录')
         : ((live ? '全服第 <b>' : '本机第 <b>') + rank + '</b> 名 · 共 <b>' + fmt(total) + '</b> 条');
     }
 
@@ -1362,10 +1394,10 @@
       }
       el.btnSaveName.textContent = rec.named ? '改这条' : '上榜';
       el.overNameHint.textContent = rec.named
-        ? '换名字只改这一条，旧成绩不动 · 最多 8 个字'
-        : '留个名，这条就算你的 · 最多 8 个字';
+        ? '改名只改这一条 · 最多 8 字'
+        : '留名后这条归于你 · 最多 8 字';
     } else if (locked) {
-      el.overNameHint.innerHTML = '已以「<b>' + esc(rec.name) + '</b>」上榜 · 名字定格，下一局可以换';
+      el.overNameHint.innerHTML = '已以「<b>' + esc(rec.name) + '</b>」上榜 · 本局名字定格';
     } else {
       el.overNameHint.textContent = live
         ? '全服榜只显示前 ' + L.BOARD_VIEW + ' 名。'
@@ -1388,7 +1420,7 @@
     boardBack = from || null;
     boardKey = 'score';                 // 每次打开都回到总分榜
     el.boardNameInput.value = myName || '';
-    el.boardNameNote.textContent = myName ? '只改下一局' : '起个名，下一局就用它';
+    el.boardNameNote.textContent = myName ? '只改下一局' : '仅下局生效';
     fillAva(el.boardAva, faceForName(myName || L.DEFAULT_NAME));
     paintBoardSub();
     renderBoard();
@@ -1422,14 +1454,15 @@
     commitBest();
     /* 主动收工 和 打满时间 是同一张面板，只有标题和一句余量说明不同。
      * 收工要说清"你提前走了、还剩多少时间"，玩家才知道自己放弃了什么。 */
-    el.clearTitle.textContent = e.cashedOut ? '收工！' : '过关！';
+    el.clearTitle.textContent = e.cashedOut ? '已收工' : '过关';
     el.clearSub.innerHTML = e.cashedOut
-      ? '第 <b>' + e.level + '</b> 关提前收工，还剩 <b>' + Math.ceil(e.timeLeft) +
-        '</b> 秒。这一关赚了 <b>' + e.levelGain + '</b> 分，局内分 <b>' + e.score + '</b>。'
-      : '第 <b>' + e.level + '</b> 关达标。这一关赚了 <b>' + e.levelGain +
-        '</b> 分，局内分 <b>' + e.score + '</b>。';
+      ? '第 <b>' + e.level + '</b> 关提前收工 · 剩余 <b>' + Math.ceil(e.timeLeft) +
+        '</b> 秒 · 本关 <b>' + e.levelGain + '</b> 分 · 局内分 <b>' + e.score + '</b>'
+      : '第 <b>' + e.level + '</b> 关达标 · 本关 <b>' + e.levelGain +
+        '</b> 分 · 局内分 <b>' + e.score + '</b>';
     var rows = [
       { label: '本关收入', value: e.levelGain, kind: 'good' },
+      { label: '奶蛙币', value: '+' + e.coinsGain + '（共 ' + e.coins + '）', kind: 'coin' },
       { label: '局内分', value: e.score },
     ];
     if (e.cashedOut) { rows.push({ label: '省下的时间', value: Math.ceil(e.timeLeft) + ' 秒' }); }
@@ -1439,8 +1472,9 @@
       { label: '被挣脱', value: e.escapes, kind: e.escapes > 0 ? 'bad' : '' },
       { label: '用掉炸药', value: e.bombs }
     );
+    if (e.guardSaves > 0) { rows.push({ label: '护符救回连击', value: e.guardSaves + ' 次', kind: 'good' }); }
     tally(el.clearTally, rows);
-    el.btnNext.textContent = shopWillOpen() ? '先去小卖部 →' : '进入第 ' + (e.level + 1) + ' 关';
+    el.btnNext.textContent = shopWillOpen() ? '去小卖部' : '进入第 ' + (e.level + 1) + ' 关';
     show(el.ovClear);
   }
 
@@ -1458,8 +1492,8 @@
     recordRun('fail');
     lastRunBest = isBest;
     commitBest();
-    el.overSub.innerHTML = '第 <b>' + e.level + '</b> 关卡住了：门槛 <b>' + e.target +
-      '</b> 分，你差了 <b>' + (e.target - e.score) + '</b> 分。';
+    el.overSub.innerHTML = '第 <b>' + e.level + '</b> 关未达标 · 门槛 <b>' + e.target +
+      '</b> 分 · 差 <b>' + (e.target - e.score) + '</b> 分';
     paintOverBoard();
     /* 结算卡把账摊开写：局内分、倍率、结算分三行并排，
      * 玩家一眼能算出"为什么我这个分能排这儿"，不用猜榜是不是算错了。 */
@@ -1471,11 +1505,12 @@
       { label: '最高连击', value: e.comboBest },
       { label: '撞到炸弹', value: e.angels, kind: e.angels > 0 ? 'bad' : '' },
       { label: '被挣脱', value: e.escapes, kind: e.escapes > 0 ? 'bad' : '' },
-      { label: '小卖部花掉', value: e.shopSpent },
+      { label: '本局奶蛙币', value: (e.coinsEarned || 0) + '（余 ' + (e.coins || 0) + '）', kind: 'coin' },
+      { label: '小卖部花掉', value: (e.shopSpent || 0) + ' 币' },
     ]);
     var rb = recordBest();
     /* "新纪录"只在上面的上榜区说一次就够了 —— 同一屏喊两遍显得吵。 */
-    el.overBest.innerHTML = '最高结算分 <b>' + fmt(rb.score) + '</b> · 最远到第 <b>' + rb.level + '</b> 关';
+    el.overBest.innerHTML = '最高结算分 <b>' + fmt(rb.score) + '</b> · 最远第 <b>' + rb.level + '</b> 关';
     show(el.ovOver);
   }
 
@@ -1483,33 +1518,40 @@
   function renderShop() {
     var v = L.shopView(game);
 
-    el.shopSub.innerHTML = '第 <b>' + game.level + '</b> 关的账结完了，先买点东西再进第 <b>' +
+    el.shopSub.innerHTML = '第 <b>' + game.level + '</b> 关已结算 · 买完进入第 <b>' +
       (game.level + 1) + '</b> 关。';
-    el.shopWallet.textContent = game.score;
-    el.shopTarget.textContent = game.target;
-    el.shopBudget.textContent = v.budget;
-    el.shopSpent.textContent = game.shopSpent;
+    el.shopWallet.textContent = v.coins;
+    if (el.shopEarned) { el.shopEarned.textContent = v.earned; }
+    /* 这一行是整次改版的重点，必须写在界面上：
+     * 玩家上一版不买东西，就是因为在算"买完离达标更远"。 */
+    if (el.shopScore) { el.shopScore.textContent = v.score; }
+    el.shopSpent.textContent = v.spent;
     el.shopDyn.textContent = v.nextDynamite;
 
     var html = '';
     v.items.forEach(function (it) {
-      var owned = it.owned > 0 ? '<span class="si-owned">已买 ' + it.owned + (it.unit || '') + '</span>' : '';
+      var owned = it.owned > 0
+        ? '<span class="si-owned">' + (it.scope === 'run' ? '已收 ' : '已买 ') +
+          it.owned + (it.scope === 'run' ? ' 本' : (it.unit || '')) + '</span>'
+        : '';
       var btn = it.canBuy
         ? '<button class="si-buy" type="button" data-buy="' + it.key + '">买</button>'
         : '<button class="si-buy off" type="button" disabled>' +
-          (it.reason.indexOf('门槛') >= 0 ? '买不起' : '已买满') + '</button>';
+          (/够/.test(it.reason) ? '币不够' : '已买满') + '</button>';
 
+      /* 五件商品挤一张卡：买按钮放在标题行右侧，不再单占一行。
+       * 手机上（375 宽）这样才不用在小卖部里滚动。 */
       html += '<div class="shop-item' + (it.canBuy ? '' : ' off') + '">' +
         '<div class="si-head">' +
           '<b>' + it.name + '</b>' +
           '<em class="si-tag">' + it.tag + '</em>' +
           owned +
-          '<span class="si-price"><i>¥</i>' + it.price + '</span>' +
+          '<span class="si-price"><i></i>' + it.price + '</span>' +
+          btn +
         '</div>' +
         '<p class="si-desc">' + it.desc + '</p>' +
         '<p class="si-hint">' + it.hint + '</p>' +
         (it.canBuy ? '' : '<p class="si-why">' + it.reason + '</p>') +
-        btn +
       '</div>';
     });
     el.shopList.innerHTML = html;
@@ -1587,7 +1629,7 @@
     flash = 0;
     lastT = 0;
     cacheFor(game.cfg);
-    /* HUD 上这个数一直是**局内分**（它是钱，门槛和小卖部都按它走），
+    /* HUD 上这个数一直是**局内分**（门槛按它算，小卖部不碰它），
      * 但把倍率写在旁边，玩家才不会以为结算时会凭空多乘一次。 */
     if (el.scoreUnit) {
       var mult = L.diffFactor(preset);
@@ -1656,8 +1698,8 @@
     var cfg = game ? game.cfg : L.CONFIG;
     var a = cfg.SWING_PERIOD_START === undefined ? cfg.SWING_PERIOD : cfg.SWING_PERIOD_START;
     var b = cfg.SWING_PERIOD_MIN === undefined ? a : cfg.SWING_PERIOD_MIN;
-    el.swingNote.innerHTML = '钩子第 1 关 ' + a.toFixed(1) + ' 秒摆一个来回，' +
-      '越往后越快，到 ' + b.toFixed(1) + ' 秒封顶（不再变快）。';
+    el.swingNote.innerHTML = '摆动周期：第 1 关 ' + a.toFixed(1) + ' 秒/次，' +
+      '最快 ' + b.toFixed(1) + ' 秒/次';
   }
 
   /* ============================ 输入 ============================ */
@@ -1695,7 +1737,7 @@
   stage.addEventListener('pointerdown', function (ev) {
     // 覆盖层 / 按钮自己处理点击
     if (ev.target.closest && (ev.target.closest('.overlay') || ev.target.closest('.mute') ||
-        ev.target.closest('.dyn') || ev.target.closest('.keep-hint') ||
+        ev.target.closest('.sky-row') || ev.target.closest('.keep-hint') ||
         ev.target.closest('.tools'))) { return; }
     tryShoot();
   });
@@ -1762,7 +1804,7 @@
     var raw = el.boardNameInput.value;
     if (!setDefaultName(raw)) {
       el.boardNameInput.value = myName || '';
-      el.boardNameNote.textContent = '名字不能空着';
+      el.boardNameNote.textContent = '名字不能为空';
       el.boardNameInput.classList.add('bad');
       setTimeout(function () { el.boardNameInput.classList.remove('bad'); }, 420);
       return false;
