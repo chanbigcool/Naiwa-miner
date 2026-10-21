@@ -46,11 +46,12 @@ function refsOf(pageRel) {
   while ((m = re.exec(html))) {
     const raw = m[1].trim();
     if (!raw || raw.startsWith('#') || /^(https?:|data:|mailto:|javascript:)/i.test(raw)) { continue; }
-    // 指向目录的引用（如 miner/）不是文件，真正的 index.html 会在 PAGES 里单独校验，跳过避免误报"本机缺这个文件"
-    if (raw.endsWith('/')) { continue; }
     const q = raw.indexOf('?');
     const bare = q >= 0 ? raw.slice(0, q) : raw;
     const query = q >= 0 ? raw.slice(q) : '';
+    // 指向目录的引用（如 miner/ 或 miner/?preset=standard）不是文件，真正的 index.html
+    // 会在 PAGES 里单独校验，跳过避免误报"本机缺这个文件"。先剥掉 ? 再判结尾。
+    if (bare.endsWith('/')) { continue; }
     const rel = path.posix.normalize(path.posix.join(dir, bare));
     out.push({ rel, url: BASE + rel + query, query, page: pageRel });
   }
