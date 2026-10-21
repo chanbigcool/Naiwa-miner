@@ -128,6 +128,23 @@
   var game = null;                    // MinerLogic 的 state
   var paused = false;
   var preset = 'standard';
+
+  /* 落地页（根 index.html）用「开始游戏」按钮带 ?preset= 跳进来，
+   * 这里读出来作为这一局的初始难度，并让暂停卡里的难度按钮高亮到对应档。
+   * URL 之外没有任何地方会预设难度，所以只在启动时认一次；进游戏后
+   * 玩家在暂停卡里手动换档，是另一回事，不受这里影响。 */
+  (function syncPresetFromUrl() {
+    try {
+      var q = new URLSearchParams(location.search);
+      var p = (q.get('preset') || '').trim();
+      if (p === 'relaxed' || p === 'standard' || p === 'hard') { preset = p; }
+    } catch (e) { /* 老浏览器没有 URLSearchParams，忽略，走默认 */ }
+    if (el && el.preset) {
+      Array.prototype.forEach.call(el.preset.querySelectorAll('button[data-preset]'), function (b) {
+        b.classList.toggle('on', b.getAttribute('data-preset') === preset);
+      });
+    }
+  })();
   var lastT = 0;
   var raf = 0;
   var parts = [];                     // 粒子（纯视觉）

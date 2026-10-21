@@ -66,13 +66,14 @@
 
     /* —— 摆动速度随关卡递增，到峰值封顶 ——
      * 第 1 关慢慢摆（好瞄、不慌），越往后越快，到 SWING_PERIOD_MIN 就不再加了。
-     * 峰值是**红线**：2.4s 时匀速模式的角速度是 150°/(2.4/2) = 125°/s ≈ 2.08°/帧，
-     * 中等大小的物品还有 ~80ms ≈ 5 帧的窗口。再快就退化成碰运气了 ——
-     * 那时候"变难"是靠废掉手感换来的，不算真的加难度。有测试守着这条。
-     * 想整体调慢/调快，改这三条即可；三档预设会各自覆盖。 */
+     * 峰值是**瞄准窗口红线**：标准档 2.0s 时匀速角速度约 150°/s ≈ 2.5°/帧，
+     * 中等大小的物品还有 ~4~5 帧窗口；再快就退化成碰运气了，那不算真加难度。
+     * 这条红线之前是 2.4s，玩家反馈"后期太松、随手就能过"，
+     * 所以整体下调到 2.0s（硬核 2.1 / 轻松 2.4）并更早到底 ——
+     * 后期必须认真瞄，不能随手甩。三档预设会各自覆盖，改这三条即可。 */
     SWING_PERIOD_START: 3.6, // 第 1 关一个来回的耗时（秒）
-    SWING_PERIOD_MIN: 2.4,   // 峰值速度（周期下限，永远不突破）
-    SWING_PERIOD_STEP: 0.12, // 每关缩短多少 → 第 11 关到峰值
+    SWING_PERIOD_MIN: 2.0,   // 峰值速度（周期下限，标准档红线，永远不突破）
+    SWING_PERIOD_STEP: 0.16, // 每关缩短多少 → 第 11 关到峰值（更早到底）
     SWING_PERIOD: 3.6,       // 运行时值，由 applyLevelTuning() 按关卡写入（别手改）
     SWING_START_PHASE: Math.PI / 2,  // 起始相位：π/2 时钩子正好从正中起摆
     SWING_TURN_EASE: 0.10,   // 匀速模式两端轻微缓动（0=纯三角波，越大越像钟摆）
@@ -183,14 +184,17 @@
     LAUGH_COMBO_FULL: 8,     // 连击到 8 时，笑声等级拉满（0~1）
 
     /* —— 大块头挣脱 ——
-     * ESCAPE_CHANCE: 保险箱被钩住时，有多大概率会挣扎。
+     * ESCAPE_CHANCE(_BASE): 保险箱（及钻石）被钩住时，有多大概率会挣扎。
+     * 概率随关卡在 applyLevelTuning 里从 BASE 爬到 MAX，越往后大件越容易"差一点掉回去"。
      *
      * 触发时机**不能按"拉了多久"算**。原来用时间（0.75s），
      * 但这一版把回收速度改成"越值钱越快"之后，保险箱回得飞快（~790/秒），
      * 从 300 远的地方 0.4 秒就到家了 —— 时间根本没走到，挣脱机制直接变成死的。
      * 所以改成按**回收进度**触发：回完 ESCAPE_AT_FRACTION 的路程就挣脱。
      * 这样不管速度快慢，"快到手了又掉回去"这个感觉都成立。 */
-    ESCAPE_CHANCE: 0.30,
+    ESCAPE_CHANCE: 0.30,         // 基准（开局那一下），预设会覆盖并随关卡爬升
+    ESCAPE_CHANCE_STEP: 0,       // 每关额外增加的概率（默认不爬，预设覆盖）
+    ESCAPE_CHANCE_MAX: 0.30,     // 挣脱概率上限
     ESCAPE_AT_FRACTION: 0.72, // 回完 72% 的路程时挣脱（越接近 1 越"差一点")
 
     /* —— 布局生成 —— */
@@ -326,22 +330,25 @@
    * 轻松档慢慢爬，硬核档第 9 关就到底。 */
   var PRESETS = {
     relaxed: {
-      SWING_PERIOD_START: 4.2, SWING_PERIOD_MIN: 2.8, SWING_PERIOD_STEP: 0.13,
+      SWING_PERIOD_START: 4.2, SWING_PERIOD_MIN: 2.4, SWING_PERIOD_STEP: 0.15,
       SHOOT_SPEED: 820, PULL_BASE_SPEED: 920, ESCAPE_CHANCE: 0.15,
+      ESCAPE_CHANCE_STEP: 0.012, ESCAPE_CHANCE_MAX: 0.35,
       LEVEL_TIME: 70,
       TARGET_RATIO_BASE: 0.50, TARGET_RATIO_STEP: 0.12, TARGET_RATIO_MAX: 2.20,
       MOVE_FROM_LEVEL: 3, MOVE_MAX_COUNT: 2,
     },
     standard: {
-      SWING_PERIOD_START: 3.6, SWING_PERIOD_MIN: 2.4, SWING_PERIOD_STEP: 0.12,
-      SHOOT_SPEED: 900, PULL_BASE_SPEED: 820, ESCAPE_CHANCE: 0.30,
+      SWING_PERIOD_START: 3.6, SWING_PERIOD_MIN: 2.0, SWING_PERIOD_STEP: 0.16,
+      SHOOT_SPEED: 900, PULL_BASE_SPEED: 820, ESCAPE_CHANCE: 0.25,
+      ESCAPE_CHANCE_STEP: 0.02, ESCAPE_CHANCE_MAX: 0.55,
       LEVEL_TIME: 60,
       TARGET_RATIO_BASE: 0.58, TARGET_RATIO_STEP: 0.14, TARGET_RATIO_MAX: 2.70,
       MOVE_FROM_LEVEL: 2, MOVE_MAX_COUNT: 3,
     },
     hard: {
-      SWING_PERIOD_START: 3.2, SWING_PERIOD_MIN: 2.4, SWING_PERIOD_STEP: 0.09,
-      SHOOT_SPEED: 1000, PULL_BASE_SPEED: 730, ESCAPE_CHANCE: 0.45,
+      SWING_PERIOD_START: 3.2, SWING_PERIOD_MIN: 2.1, SWING_PERIOD_STEP: 0.12,
+      SHOOT_SPEED: 1000, PULL_BASE_SPEED: 730, ESCAPE_CHANCE: 0.35,
+      ESCAPE_CHANCE_STEP: 0.02, ESCAPE_CHANCE_MAX: 0.65,
       LEVEL_TIME: 50,
       TARGET_RATIO_BASE: 0.68, TARGET_RATIO_STEP: 0.18, TARGET_RATIO_MAX: 3.10,
       MOVE_FROM_LEVEL: 1, MOVE_MAX_COUNT: 4,
@@ -508,6 +515,14 @@
   /* 把"当前关卡"该有的参数写回 cfg。进关/换布局都要调一次。 */
   function applyLevelTuning(state) {
     state.cfg.SWING_PERIOD = swingPeriod(state.level, state.cfg);
+    /* 挣脱概率随关卡爬升：后期大件（保险箱/钻石）更常"差一点掉回去"。
+     * 以 ESCAPE_CHANCE_BASE（建局时锁好的基准）为锚线性爬升，封顶 MAX —— 跨关卡复用同一个 cfg 也安全。 */
+    var ec = state.cfg.ESCAPE_CHANCE_STEP;
+    if (typeof ec === 'number' && ec > 0) {
+      var base = state.cfg.ESCAPE_CHANCE_BASE;       // 建局时锁好的基准，绝不被本函数改写
+      var max = state.cfg.ESCAPE_CHANCE_MAX;
+      state.cfg.ESCAPE_CHANCE = Math.min(max, base + (state.level - 1) * ec);
+    }
   }
 
   /* 本关配发几发炸药（白送的 + 小卖部买的，封顶 DYNAMITE_MAX） */
@@ -900,6 +915,11 @@
     if (opts && opts.config) {
       for (k in opts.config) { if (Object.prototype.hasOwnProperty.call(opts.config, k)) { cfg[k] = opts.config[k]; } }
     }
+    /* 把"挣脱基准"单独锁一份：applyLevelTuning 会按关卡改 ESCAPE_CHANCE，
+     * 但必须以原始基准为锚线性爬升，不能拿上一关改过的值当基准（否则会复利叠加）。 */
+    cfg.ESCAPE_CHANCE_BASE = cfg.ESCAPE_CHANCE;
+    if (typeof cfg.ESCAPE_CHANCE_STEP !== 'number') { cfg.ESCAPE_CHANCE_STEP = 0; }
+    if (typeof cfg.ESCAPE_CHANCE_MAX !== 'number') { cfg.ESCAPE_CHANCE_MAX = cfg.ESCAPE_CHANCE; }
     return cfg;
   }
 
@@ -1458,7 +1478,7 @@
 
         /* 大块头会挣扎：先假装拉一段，快到手时脱钩掉回去。
          * 触发点是"绳长缩到多少"，不是"拉了多久" —— 原因见 CONFIG 里 ESCAPE_AT_FRACTION。 */
-        if (hit.type === 'sumo' && state.rng() < cfg.ESCAPE_CHANCE) {
+        if ((hit.type === 'sumo' || hit.type === 'god') && state.rng() < cfg.ESCAPE_CHANCE) {
           state.escapeAtLen = cfg.ROPE_IDLE_LEN +
             (1 - cfg.ESCAPE_AT_FRACTION) * (state.ropeLen - cfg.ROPE_IDLE_LEN);
         } else {

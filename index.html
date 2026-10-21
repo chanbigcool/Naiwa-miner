@@ -111,6 +111,71 @@
   @media (prefers-reduced-motion: reduce) {
     .card, .enter.big { animation: none !important; }
   }
+
+  /* 难度选择 */
+  .pick {
+    display: flex; align-items: stretch; gap: 8px;
+    margin-top: 22px; padding: 10px 12px;
+    border-radius: 14px; background: rgba(126,84,44,.05);
+  }
+  .pick-label {
+    align-self: center; font-size: 12px; font-weight: 800; letter-spacing: .14em;
+    color: var(--ink-soft);
+  }
+  .pick button {
+    flex: 1; font: inherit; font-size: 14px; font-weight: 700;
+    padding: 9px 4px; border: 1.5px solid rgba(126,84,44,.22); border-radius: 11px;
+    background: #fff; color: var(--ink); cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; gap: 1px;
+    transition: transform .14s, border-color .14s, box-shadow .14s, background .14s;
+  }
+  .pick button b { font-size: 11px; font-weight: 800; color: var(--gold-dark); }
+  .pick button.on {
+    border-color: var(--brand); background: linear-gradient(180deg,#fff,#fff2ee);
+    box-shadow: 0 6px 16px rgba(225,75,75,.18);
+  }
+  .pick button.on b { color: var(--brand-dark); }
+  .pick button:active { transform: scale(.97); }
+  .pick-note {
+    margin: 8px 0 0; font-size: 11.5px; color: var(--ink-soft); line-height: 1.5;
+  }
+
+  /* 排行榜 */
+  .board {
+    margin-top: 20px; padding: 14px 14px 8px;
+    border-radius: 14px; background: rgba(126,84,44,.05); text-align: left;
+  }
+  .board-head {
+    display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px;
+  }
+  .board-head h2 {
+    margin: 0; font-size: 13px; font-weight: 800; letter-spacing: .14em; color: var(--ink);
+  }
+  .board-tag {
+    font-size: 10.5px; font-weight: 700; color: var(--gold-dark);
+    background: rgba(232,163,61,.16); padding: 2px 8px; border-radius: 999px;
+  }
+  .board-list { list-style: none; margin: 0; padding: 0; }
+  .board-row, .board-tip {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13px; padding: 6px 2px; border-bottom: 1px dashed rgba(126,84,44,.14);
+  }
+  .board-list li:last-child { border-bottom: 0; }
+  .board-tip { color: var(--ink-soft); justify-content: center; font-size: 12px; padding: 10px 2px; }
+  .board-row .rk { width: 20px; text-align: center; font-weight: 800; color: var(--ink-soft); flex: 0 0 auto; }
+  .board-row .rk-1, .board-row .rk-2, .board-row .rk-3 { color: var(--gold-dark); }
+  .board-row .nm {
+    flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600;
+  }
+  .board-row .sc { font-weight: 800; color: var(--brand-dark); flex: 0 0 auto; }
+  .board-row .pr {
+    flex: 0 0 auto; font-size: 10.5px; color: var(--ink-soft);
+    background: rgba(126,84,44,.08); padding: 1px 6px; border-radius: 999px;
+  }
+
+  @media (max-width: 360px) {
+    .pick-label { display: none; }
+  }
 </style>
 </head>
 <body>
@@ -132,10 +197,92 @@
         </ul>
       </section>
 
-      <a class="enter big" href="miner/">开始游戏</a>
+      <section class="pick" id="pick" role="group" aria-label="选择难度">
+        <span class="pick-label">难度</span>
+        <button type="button" data-preset="relaxed">轻松<b>×1</b></button>
+        <button type="button" data-preset="standard" class="on">标准<b>×2</b></button>
+        <button type="button" data-preset="hard">硬核<b>×3</b></button>
+      </section>
+      <p class="pick-note">难度越高，摆钩更快、挣脱更凶，结算分 × 倍率</p>
+
+      <a class="enter big" id="startBtn" href="miner/?preset=standard">开始游戏</a>
+
+      <section class="board" id="board">
+        <div class="board-head">
+          <h2>排行榜</h2>
+          <span class="board-tag" id="boardTag">总分榜</span>
+        </div>
+        <ol class="board-list" id="boardList">
+          <li class="board-tip">榜单加载中…</li>
+        </ol>
+      </section>
 
       <p class="foot">手机与电脑均可直接开玩 · 竖屏体验最佳</p>
     </main>
   </div>
+
+  <script src="miner/cloud.js"></script>
+  <script>
+  (function () {
+    var pick = document.getElementById('pick');
+    var startBtn = document.getElementById('startBtn');
+    var boardList = document.getElementById('boardList');
+    var PRESET = {
+      relaxed:  { label: '轻松', factor: 1 },
+      standard: { label: '标准', factor: 2 },
+      hard:     { label: '硬核', factor: 3 }
+    };
+
+    function fmt(n) { return String(Math.floor(n || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+
+    /* 选难度 → 同时点亮按钮、改写进入按钮的 ?preset= */
+    function selectPreset(p) {
+      Array.prototype.forEach.call(pick.querySelectorAll('button[data-preset]'), function (b) {
+        b.classList.toggle('on', b.getAttribute('data-preset') === p);
+      });
+      startBtn.setAttribute('href', 'miner/?preset=' + p);
+    }
+    pick.addEventListener('click', function (ev) {
+      var b = ev.target.closest ? ev.target.closest('button[data-preset]') : null;
+      if (b) { selectPreset(b.getAttribute('data-preset')); }
+    });
+
+    /* 内嵌只读排行榜：只取云端总分榜前若干名，纯展示，不写库 */
+    function renderBoard(rows) {
+      if (!rows || !rows.length) {
+        boardList.innerHTML = '<li class="board-tip">还没有人上榜，快来抢第一！</li>';
+        return;
+      }
+      boardList.innerHTML = rows.map(function (r, i) {
+        var m = PRESET[r.preset] || PRESET.standard;
+        return '<li class="board-row">' +
+          '<span class="rk rk-' + (i + 1) + '">' + (i + 1) + '</span>' +
+          '<span class="nm">' + esc(r.name || '无名氏') + '</span>' +
+          '<span class="sc">' + fmt(r.score) + '</span>' +
+          '<span class="pr">' + m.label + '×' + m.factor + '</span>' +
+          '</li>';
+      }).join('');
+    }
+
+    function loadBoard() {
+      if (!window.MinerCloud || !MinerCloud.available()) {
+        boardList.innerHTML = '<li class="board-tip">排行榜需在发布后的域名下查看</li>';
+        return;
+      }
+      MinerCloud.load(10).then(function (res) {
+        renderBoard((res && res.rows && res.rows.score) || []);
+      }).catch(function () {
+        boardList.innerHTML = '<li class="board-tip">榜单暂时打不开，稍后再试</li>';
+      });
+    }
+
+    loadBoard();
+  })();
+  </script>
 </body>
 </html>

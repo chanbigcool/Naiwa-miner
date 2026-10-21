@@ -697,6 +697,22 @@ test('挣脱后这一发不算抓空：不清零连击', function () {
   assert(!r.evs.some(function (e) { return e.type === 'empty'; }), '挣脱后不该再报抓空');
 });
 
+test('钻石也会挣脱：概率命中时脱钩，掉回原位', function () {
+  var s = newGame();
+  L.beginLevel(s);
+  belowMiner(s, 'god', 300);
+  var home = { x: s.items[0].x, y: s.items[0].y };
+  s.rng = function () { return 0; };       // 必然触发挣脱
+  shootStraightDown(s);
+  var r = advance(s, 20, 'escape');
+  assert(r.hit, '钻石应该出现 escape 事件');
+  eq(s.escapes, 1, '挣脱计数应为 1');
+  eq(s.score, 0, '挣脱了就不该加分');
+  eq(s.items[0].grabbed, false, '钻石应回到未被抓状态');
+  near(s.items[0].x, home.x, 1e-9, '应掉回原位 x');
+  near(s.items[0].y, home.y, 1e-9, '应掉回原位 y');
+});
+
 test('天使是炸弹：扣分且连击清零，分数不会变负', function () {
   var s = newGame();
   L.beginLevel(s);
@@ -1283,19 +1299,20 @@ test('摆动周期：第 1 关最慢，逐关加快，封顶在峰值', function
   eq(L.swingPeriod(40, cfg), cfg.SWING_PERIOD_MIN, '高关卡应封顶');
 });
 
-test('摆动周期的红线：任何关卡都不得低于 2.4 秒（瞄准窗口）', function () {
-  /* 这是手感红线，实测来的：
-   * 匀速模式下每帧角速度 ≈ 2×幅度 ÷ (周期×180)×360，
-   * 周期 2.4s 时约 2.1°/帧 —— 中等大小的物品只剩 ~5 帧窗口。
-   * 再快就变成"看得见打不着"，那正是这轮玩家反馈的"钩子甩得太快、手感很差"。 */
+test('摆动周期红线：任何关卡都不得低于本档峰值（瞄准窗口），且峰值本身不越线', function () {
+  /* 这是手感红线，实测来的：匀速模式下每帧角速度 ≈ 2×幅度 ÷ (周期×180)×360，
+   * 标准档峰值 2.0s 时约 2.5°/帧 —— 中等大小的物品还有 ~4~5 帧窗口；
+   * 再快就退化成碰运气，那不算真加难度。本档峰值 = SWING_PERIOD_MIN，
+   * 三档各有自己的红线（标准 2.0 / 硬核 2.1 / 轻松 2.4）。 */
   ['relaxed', 'standard', 'hard'].forEach(function (p) {
     var cfg = L.createGame({ preset: p }).cfg;
+    var floor = cfg.SWING_PERIOD_MIN;
+    assert(floor >= 1.6 - 1e-9, p + ' 档峰值 ' + floor.toFixed(2) + 's 不能快到失去瞄准窗口（<1.6s）');
     for (var lv = 1; lv <= 40; lv++) {
       var per = L.swingPeriod(lv, cfg);
-      assert(per >= 2.4 - 1e-9,
-        p + ' 档第 ' + lv + ' 关周期掉到 ' + per.toFixed(2) + 's，突破 2.4s 红线');
+      assert(per >= floor - 1e-9,
+        p + ' 档第 ' + lv + ' 关周期 ' + per.toFixed(2) + 's 低于本档峰值 ' + floor.toFixed(2) + 's');
     }
-    assert(cfg.SWING_PERIOD_MIN >= 2.4 - 1e-9, p + ' 档的峰值本身就越线了');
   });
 });
 
